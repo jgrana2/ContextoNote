@@ -34,6 +34,9 @@
         .filter((text) => text)
         .join("\n\n");
 
+    // Para gestión de cadena de prompts
+    let promptChain: { id: number; name: string; text: string }[] = [];
+
     // Función para cargar notas y prompts desde localStorage al iniciar
     onMount(() => {
         const savedNotes = JSON.parse(localStorage.getItem("notes")) || [];
@@ -186,34 +189,79 @@
         }
     }
 
-    // Ejecutar prompt
+    // Añadir un prompt a la cadena (evita duplicados)
+    function addPromptToChain(p: { id: number; name: string; text: string }) {
+        // Evitar duplicados: si ya existe en cadena, no lo añade
+        if (!promptChain.find((item) => item.id === p.id)) {
+            promptChain = [...promptChain, p];
+        }
+    }
+
+    // Limpiar la cadena de prompts
+    function clearPromptChain() {
+        promptChain = [];
+    }
+
+    // Ejecutar prompt o cadena de prompts
     async function executePrompt() {
-        // Generar prompt estructurado para LLM
-        let structuredPrompt =
-            "Por favor, utiliza la siguiente información de contexto y responde de forma clara:\n\n";
+        if (promptChain.length === 0) {
+            // Si no hay cadena, se comporta igual que antes
+            let structuredPrompt =
+                "Por favor, utiliza la siguiente información de contexto y responde de forma clara:\n\n";
+            if (selectedContextNotes.length > 0) {
+                structuredPrompt += "=== CONTEXTO ===\n";
+                selectedContextNotes.forEach((id, index) => {
+                    const note = notes.find((n) => n.id === id);
+                    if (note) {
+                        structuredPrompt += `Nota ${index + 1} (Fecha: ${note.date}, Título: ${note.title}):\n${note.content}\n\n`;
+                    }
+                });
+            }
+            structuredPrompt += "=== PETICIÓN ===\n";
+            structuredPrompt += `${promptText.trim()}\n`;
+            try {
+                llmResult = "Cargando respuesta...";
+                llmResult = await sendToAI(structuredPrompt);
+            } catch (error) {
+                llmResult = `Error al obtener respuesta del LLM: ${error.message}`;
+            }
+            return;
+        }
 
-        if (selectedContextNotes.length > 0) {
-            structuredPrompt += "=== CONTEXTO ===\n";
-            // Añadir contenido de cada nota al contexto
-            selectedContextNotes.forEach((id, index) => {
-                const note = notes.find((n) => n.id === id);
-                if (note) {
-                    structuredPrompt += `Nota ${index + 1} (Fecha: ${note.date}, Título: ${
-                        note.title
-                    }):\n${note.content}\n\n`;
+        // Si hay prompts en cadena, encadenar pasos
+        let previousOutput = "";
+        for (let i = 0; i < promptChain.length; i++) {
+            const p = promptChain[i];
+            let stepPrompt = "";
+            if (i === 0) {
+                // Incluir contexto en el primer paso
+                stepPrompt =
+                    "Por favor, utiliza la siguiente información de contexto y responde de forma clara:\n\n";
+                if (selectedContextNotes.length > 0) {
+                    stepPrompt += "=== CONTEXTO ===\n";
+                    selectedContextNotes.forEach((id, index) => {
+                        const note = notes.find((n) => n.id === id);
+                        if (note) {
+                            stepPrompt += `Nota ${index + 1} (Fecha: ${note.date}, Título: ${note.title}):\n${note.content}\n\n`;
+                        }
+                    });
                 }
-            });
-        }
+                stepPrompt += `=== PETICIÓN (${p.name}) ===\n${p.text.trim()}\n`;
+            } else {
+                // Los pasos intermedios toman la salida previa como entrada
+                stepPrompt = `Basándote en la siguiente respuesta previa:\n\n${previousOutput}\n\nRealiza la siguiente petición (${p.name}):\n${p.text.trim()}\n`;
+            }
 
-        structuredPrompt += "=== PETICIÓN ===\n";
-        structuredPrompt += `${promptText.trim()}\n`;
-        // Enviar prompt estructurado al LLM y await la respuesta
-        try {
-            llmResult = "Cargando respuesta...";
-            llmResult = await sendToAI(structuredPrompt);
-        } catch (error) {
-            llmResult = `Error al obtener respuesta del LLM: ${error.message}`;
+            try {
+                llmResult = `Cargando paso ${i + 1} (${p.name})...`;
+                previousOutput = await sendToAI(stepPrompt);
+            } catch (error) {
+                llmResult = `Error en paso ${i + 1} (${p.name}): ${error.message}`;
+                return;
+            }
         }
+        // Al finalizar todos los pasos, mostrar el output final
+        llmResult = previousOutput;
     }
 
     // Función de búsqueda simple (por texto o por fecha/etiquetas placeholder)
@@ -274,7 +322,6 @@
         }
     }
 </script>
-
 
 <!-- Modal para crear nueva nota -->
 {#if showNoteModal}
@@ -519,13 +566,31 @@
                             >
                                 {p.name}
                             </span>
-                            <div class="flex items-center">
+                            <div class="flex items-center space-x-2">
+                                <button
+                                    class="p-1 hover:bg-gray-200 rounded"
+                                    on:click={() => addPromptToChain(p)}
+                                >
+                                    <!-- Heroicon Plus -->
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        class="h-5 w-5 text-gray-800"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M12 4v16m8-8H4"
+                                        />
+                                    </svg>
+                                </button>
                                 <button
                                     class="p-1 hover:bg-gray-200 rounded"
                                     on:click={() => openPromptModal(p)}
-                                >
-                                    <!-- Heroicon Pencil Alt -->
-                                    <svg
+                                    ><svg
                                         xmlns="http://www.w3.org/2000/svg"
                                         fill="none"
                                         viewBox="0 0 24 24"
@@ -538,13 +603,12 @@
                                             stroke-linejoin="round"
                                             d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125"
                                         />
-                                    </svg>
-                                </button>
-                                <button
-                                    class="p-1 hover:bg-gray-200 rounded ml-2"
-                                    on:click={() => deletePrompt(p.id)}
+                                    </svg></button
                                 >
-                                    <!-- Heroicon Trash -->
+                                <button
+                                    class="p-1 hover:bg-gray-200 rounded"
+                                    on:click={() => deletePrompt(p.id)}
+                                    ><!-- Heroicon Trash -->
                                     <svg
                                         xmlns="http://www.w3.org/2000/svg"
                                         fill="none"
@@ -558,12 +622,40 @@
                                             stroke-linejoin="round"
                                             d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
                                         />
-                                    </svg>
-                                </button>
+                                    </svg></button
+                                >
                             </div>
                         </li>
                     {/each}
                 </ul>
+
+                <!-- Cadena de Prompts -->
+                <div class="mt-4">
+                    <h2 class="font-semibold mb-2 text-gray-900">
+                        Cadena de Prompts:
+                    </h2>
+                    {#if promptChain.length === 0}
+                        <p class="text-gray-600 text-sm">
+                            No hay prompts en la cadena.
+                        </p>
+                    {:else}
+                        <ul class="space-y-1">
+                            {#each promptChain as pc, index}
+                                <li class="flex items-center justify-between">
+                                    <span class="text-gray-800">
+                                        {index + 1}. {pc.name}
+                                    </span>
+                                </li>
+                            {/each}
+                        </ul>
+                        <button
+                            class="mt-2 bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700 text-sm"
+                            on:click={clearPromptChain}
+                        >
+                            Limpiar Cadena
+                        </button>
+                    {/if}
+                </div>
             </section>
 
             <!-- Área de Prompt y Resultado LLM -->
@@ -576,7 +668,7 @@
                 <select
                     multiple
                     bind:value={selectedContextNotes}
-                    class="w-full border border-gray-300 bg-white rounded px-3 py-2 mb-2 text-gray-800 h-32"
+                    class="w-full border border-gray-300 bg-white rounded px-3 py-2 mb-2 text-gray-800 h-fit"
                 >
                     {#each notes as note}
                         <option value={note.id} class="text-gray-800">
@@ -584,25 +676,6 @@
                         </option>
                     {/each}
                 </select>
-                <div
-                    class="mb-4 p-2 border border-gray-300 bg-white rounded h-24 overflow-auto text-gray-800"
-                >
-                    {#each selectedContextNotes as id}
-                        {#each notes.filter((n) => n.id === id) as n}
-                            <p class="text-sm font-semibold">{n.title}</p>
-                            <p class="text-xs mb-2">{n.content}</p>
-                        {/each}
-                    {/each}
-                </div>
-                <h2 class="text-lg font-bold mb-2 text-gray-900">
-                    Área de Prompt
-                </h2>
-                <textarea
-                    rows="4"
-                    bind:value={promptText}
-                    class="w-full border border-gray-300 bg-white rounded px-3 py-2 mb-2 text-gray-800"
-                    placeholder="Escribe o elige un prompt..."
-                ></textarea>
                 <button
                     class="flex justify-center bg-gray-800 text-white px-3 py-1 rounded mb-2 hover:bg-gray-700"
                     on:click={executePrompt}
@@ -628,7 +701,7 @@
                 <div
                     class="border-t border-gray-200 bg-white p-4 rounded-lg shadow overflow-y-auto"
                 >
-                    <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center justify-between">
                         <h2 class="text-lg font-bold text-gray-900">
                             Resultado:
                         </h2>
@@ -652,12 +725,13 @@
                             </svg>
                         </button>
                     </div>
-                    <div class="text-gray-800 text-sm markdown-result">
-                        {@html renderMarkdown(llmResult)}
-                    </div>
+                    {#if llmResult}
+                        <div class="text-gray-800 text-sm markdown-result mt-2">
+                            {@html renderMarkdown(llmResult)}
+                        </div>
+                    {/if}
                 </div>
             </section>
         </aside>
     </div>
 </div>
-
