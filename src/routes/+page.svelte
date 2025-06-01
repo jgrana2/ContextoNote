@@ -5,6 +5,7 @@
     // Estado de notas usando localStorage
     let notes = [];
     let selectedNoteId = null;
+    let noteDate = "";
     let noteContent = "";
     let noteTitle = "";
 
@@ -12,6 +13,11 @@
     let showNoteModal = false;
     let newNoteTitle = "";
     let newNoteContent = "";
+
+    // Para edición de nota desde vista Markdown
+    let showEditNoteModal = false;
+    let editNoteTitle = "";
+    let editNoteContent = "";
 
     // Cargar prompts desde localStorage o inicializar vacío
     let prompts = [];
@@ -65,6 +71,7 @@
             }
         }
         selectedNoteId = note.id;
+        noteDate = note.date;
         noteTitle = note.title;
         noteContent = note.content;
     }
@@ -103,6 +110,7 @@
             }
         }
         selectedNoteId = null;
+        noteDate = "";
         noteTitle = "";
         noteContent = "";
         showNoteModal = true;
@@ -110,12 +118,53 @@
         newNoteContent = "";
     }
 
+    function openEditNoteModal() {
+      editNoteTitle = noteTitle;
+      editNoteContent = noteContent;
+      showEditNoteModal = true;
+    }
+
+    function cancelEditNote() {
+      showEditNoteModal = false;
+    }
+
+    function saveEditedNote() {
+      if (selectedNoteId !== null) {
+        const idx = notes.findIndex((n) => n.id === selectedNoteId);
+        if (idx !== -1) {
+          notes[idx].title = editNoteTitle;
+          notes[idx].content = editNoteContent;
+          persistNotes();
+          // Actualizar vista Markdown
+          noteTitle = editNoteTitle;
+          noteContent = editNoteContent;
+        }
+      }
+      showEditNoteModal = false;
+    }
+
     async function saveNewNote() {
         const id = notes.length ? Math.max(...notes.map((n) => n.id)) + 1 : 1;
-        const date = new Date().toISOString().slice(0, 10);
+        const formattedDateTime = new Date().toLocaleString('es-CO', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+        const capitalized = formattedDateTime.charAt(0).toUpperCase() + formattedDateTime.slice(1);
+        const dateObj = new Date();
+        const day = dateObj.getDate().toString().padStart(2, '0');
+        const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+        const rawDate = `${day}/${month}`;
+        console.log(rawDate);
         const note = {
             id,
-            date,
+            dateRaw: rawDate,
+            date: capitalized,
             title: newNoteTitle || "Nueva nota",
             content: newNoteContent,
         };
@@ -329,7 +378,7 @@
         class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center z-50"
     >
         <div
-            class="bg-gray-100 rounded-lg p-6 w-96 border border-gray-200 shadow-lg"
+            class="bg-gray-100 rounded-lg p-6 w-[800px] h-[600px] border border-gray-200 shadow-lg flex flex-col"
         >
             <h2 class="text-xl font-bold mb-4 text-gray-900">
                 Crear Nueva Nota
@@ -344,7 +393,7 @@
                 rows="6"
                 placeholder="Contenido de la nota"
                 bind:value={newNoteContent}
-                class="w-full border border-gray-300 bg-white rounded px-3 py-2 mb-3 text-gray-800"
+                class="w-full border border-gray-300 bg-white rounded px-3 py-2 mb-3 text-gray-800 h-full"
             ></textarea>
             <div class="flex justify-end space-x-2">
                 <button
@@ -364,6 +413,41 @@
     </div>
 {/if}
 
+<!-- Modal para editar nota existente -->
+{#if showEditNoteModal}
+  <div class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-gray-100 rounded-lg p-6 w-[800px] h-[600px] border border-gray-200 shadow-lg flex flex-col">
+      <h2 class="text-xl font-bold mb-4 text-gray-900">Editar Nota</h2>
+      <input
+        type="text"
+        placeholder="Título de la nota"
+        bind:value={editNoteTitle}
+        class="w-full border border-gray-300 bg-white rounded px-3 py-2 mb-3 text-gray-800"
+      />
+      <textarea
+        rows="6"
+        placeholder="Contenido de la nota"
+        bind:value={editNoteContent}
+        class="w-full h-full border border-gray-300 bg-white rounded px-3 py-2 mb-3 text-gray-800"
+      ></textarea>
+      <div class="flex justify-end space-x-2">
+        <button
+          class="bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700"
+          on:click={cancelEditNote}
+        >
+          Cancelar
+        </button>
+        <button
+          class="bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700"
+          on:click={saveEditedNote}
+        >
+          Guardar
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <!-- Modal para crear nuevo prompt -->
 {#if showPromptModal}
     <div
@@ -373,7 +457,7 @@
             class="bg-gray-100 rounded-lg p-6 w-96 border border-gray-200 shadow-lg"
         >
             <h2 class="text-xl font-bold mb-4 text-gray-900">
-                Crear Nuevo Prompt
+                Crear Nueva Instrucción
             </h2>
             <input
                 type="text"
@@ -462,7 +546,6 @@
                             class="cursor-pointer"
                             on:click={() => openNote(note)}
                         >
-                            <div class="text-sm text-gray-700">{note.date}</div>
                             <div class="font-medium text-gray-900">
                                 {note.title}
                             </div>
@@ -494,35 +577,27 @@
 
         <!-- Panel central: Contenido de la nota -->
         <main class="flex-1 overflow-y-auto p-4">
-            {#if selectedNoteId !== null}
-                <h2 class="text-xl font-bold mb-2 text-gray-900">
-                    Editar Nota
-                </h2>
-                <input
-                    type="text"
-                    bind:value={noteTitle}
-                    placeholder="Título de la nota"
-                    class="w-full border border-gray-300 bg-white rounded px-3 py-2 mb-2 text-gray-800"
-                />
-                <textarea
-                    rows="10"
-                    bind:value={noteContent}
-                    class="w-full border border-gray-300 bg-white rounded px-3 py-2 mb-2 text-gray-800"
-                ></textarea>
-                <button
-                    class="bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700"
-                    on:click={saveNote}
-                >
-                    Guardar
-                </button>
-            {:else}
-                <div class="text-gray-600">
-                    Selecciona una nota o crea una nueva para comenzar.
-                </div>
-            {/if}
+          {#if selectedNoteId !== null}
+            <div class="flex items-center justify-between text-gray-400 mb-2 text-sm">
+              <div>{noteDate}</div>
+              <button
+                class="bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700"
+                on:click={openEditNoteModal}
+              >
+                Editar
+              </button>
+            </div>
+            <div class="text-gray-800 text-sm markdown-result mb-4">
+              {@html renderMarkdown(`# ${noteTitle}\n\n${noteContent}`)}
+            </div>
+          {:else}
+            <div class="text-gray-600">
+              Selecciona una nota o crea una nueva para comenzar.
+            </div>
+          {/if}
         </main>
 
-        <!-- Panel derecho: Prompts y Resultado -->
+        <!-- Panel derecho: Instrucciones y Resultado -->
         <aside
             class="w-1/3 border-l border-gray-200 flex flex-col p-4 overflow-y-auto bg-gray-50"
         >
@@ -546,13 +621,13 @@
                         d="M12 4v16m8-8H4"
                     />
                 </svg>
-                <span class="ml-2">Nuevo Prompt</span>
+                <span class="ml-2">Nueva Instrucción</span>
             </button>
 
-            <!-- Lista de Prompts Guardados -->
+            <!-- Lista de Instrucciones Guardadas -->
             <section class="mb-4">
                 <h2 class="text-lg font-bold mb-2 text-gray-900">
-                    Prompts Guardados
+                    Instrucciones Guardadas
                 </h2>
                 <ul class="space-y-1">
                     {#each prompts as p}
@@ -629,14 +704,14 @@
                     {/each}
                 </ul>
 
-                <!-- Cadena de Prompts -->
+                <!-- Cadena de Instrucciones -->
                 <div class="mt-4">
                     <h2 class="font-semibold mb-2 text-gray-900">
-                        Cadena de Prompts:
+                        Cadena de Instrucciones :
                     </h2>
                     {#if promptChain.length === 0}
                         <p class="text-gray-600 text-sm">
-                            No hay prompts en la cadena.
+                            No hay instrucciones en la cadena.
                         </p>
                     {:else}
                         <ul class="space-y-1">
@@ -658,7 +733,7 @@
                 </div>
             </section>
 
-            <!-- Área de Prompt y Resultado LLM -->
+            <!-- Área de Instrucción y Resultado LLM -->
             <section
                 class="flex-1 flex flex-col bg-gray-100 p-4 rounded-lg shadow"
             >
@@ -672,7 +747,7 @@
                 >
                     {#each notes as note}
                         <option value={note.id} class="text-gray-800">
-                            {note.date} – {note.title}
+                            {note.dateRaw} - {note.title}
                         </option>
                     {/each}
                 </select>
