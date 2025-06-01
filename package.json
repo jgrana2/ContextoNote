@@ -22,6 +22,7 @@
 	},
 	"dependencies": {
 		"@tailwindcss/vite": "^4.1.8",
+		"marked": "^15.0.12",
 		"tailwindcss": "^4.1.8",
 		"together-ai": "^0.16.0"
 	}

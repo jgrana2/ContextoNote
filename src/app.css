@@ -1,6 +1,27 @@
-@import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&display=swap');
+@import "tailwindcss";
 
 html {
   font-family: 'Nunito', sans-serif;
+}
+
+/* Markdown result panel global styles */
+.markdown-result p {
+    margin: 0 0 0.5rem 0;
+}
+.markdown-result h2,
+.markdown-result h3,
+.markdown-result h4,
+.markdown-result h5,
+.markdown-result h6 {
+    margin: 1rem 0 0.5rem 0;
+}
+.markdown-result ul,
+.markdown-result ol {
+    margin: 0 0 0.5rem 0;
+    list-style-position: inside;
+    list-style-type: decimal !important;
+}
+.markdown-result li {
+    margin-bottom: 0.25rem;
 }
