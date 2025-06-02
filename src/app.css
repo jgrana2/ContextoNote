@@ -57,6 +57,31 @@ header, main, section, div, ul, li, aside, textarea, input, button {
   position: relative;
   overflow: hidden;
 }
+
+/* Right sidebar: hide buttons by default and fade in on hover */
+aside.w-1\/3 ul li button {
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+aside.w-1\/3 ul li:hover button {
+  opacity: 1;
+}
+
+/* Retain smooth transitions on hover */
+aside.w-1\/3 ul li:hover {
+  background-color: #f0f0f0; /* light highlight */
+  color: #003366; /* dark text on hover */
+}
+
+/* Remove conflicting visibility rules for right sidebar prompt buttons */
+/*
+aside.w-1\/3 ul li button.invisible,
+.group:hover .group-hover\:visible {
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+*/
 /* Disable animations and transitions for reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
