@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { marked } from "marked";
+    import { fade } from "svelte/transition";
 
     // Estado de notas usando localStorage
     let notes = [];
@@ -28,6 +29,8 @@
     let newPromptText = "";
     let selectedPrompt = null;
     let promptText = "";
+    // Hovered note for action buttons in note list
+    let hoveredNoteId: number | null = null;
 
     // Resultado LLM
     let llmResult = "";
@@ -43,12 +46,23 @@
     // Para gestión de cadena de prompts
     let promptChain: { id: number; name: string; text: string }[] = [];
 
+    // Aplica altura fija a un elemento de nota según su ID
+    function establecerAlturaNota(nota, altura) {
+      const el = document.querySelector(`[data-note-id="${nota.id}"]`);
+      if (el) {
+        el.style.height = altura;
+        el.style.position = 'relative';
+      }
+    }
+
     // Función para cargar notas y prompts desde localStorage al iniciar
     onMount(() => {
         const savedNotes = JSON.parse(localStorage.getItem("notes")) || [];
         notes = savedNotes;
         const savedPrompts = JSON.parse(localStorage.getItem("prompts")) || [];
         prompts = savedPrompts;
+        // Aplicar altura fija tras montar
+        notes.forEach(n => establecerAlturaNota(n, '30px'));
     });
 
     // Sincroniza localStorage
@@ -170,6 +184,8 @@
         };
         notes = [note, ...notes];
         persistNotes();
+        // Aplicar altura fija a la nueva nota
+        establecerAlturaNota(note, '30px');
         showNoteModal = false;
         openNote(note);
     }
@@ -375,6 +391,8 @@
 <!-- Modal para crear nueva nota -->
 {#if showNoteModal}
     <div
+        in:fade={{ duration: 200 }}
+        out:fade={{ duration: 200 }}
         class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center z-50"
     >
         <div
@@ -415,7 +433,11 @@
 
 <!-- Modal para editar nota existente -->
 {#if showEditNoteModal}
-  <div class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center z-50">
+  <div
+    in:fade={{ duration: 200 }}
+    out:fade={{ duration: 200 }}
+    class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center z-50"
+  >
     <div class="bg-gray-100 rounded-lg p-6 w-[800px] h-[600px] border border-gray-200 shadow-lg flex flex-col">
       <h2 class="text-xl font-bold mb-4 text-gray-900">Editar Nota</h2>
       <input
@@ -451,6 +473,8 @@
 <!-- Modal para crear nuevo prompt -->
 {#if showPromptModal}
     <div
+        in:fade={{ duration: 200 }}
+        out:fade={{ duration: 200 }}
         class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center z-50"
     >
         <div
@@ -504,7 +528,7 @@
 
     <div class="flex flex-1 overflow-hidden">
         <!-- Panel izquierdo: búsqueda y lista de notas -->
-        <aside class="w-60 bg-gray-100 border-r border-gray-200 flex flex-col">
+        <aside class="w-80 bg-gray-100 border-r border-gray-200 flex flex-col">
             <div class="p-4">
                 <input
                     type="text"
@@ -539,9 +563,14 @@
                     >
                 </button>
             </div>
-            <ul class="flex-1 overflow-y-auto p-4 space-y-2">
+            <ul id="notesList" class="flex-1 overflow-y-auto p-4 space-y-2">
                 {#each notes as note}
-                    <li class="flex items-center justify-between">
+                    <li
+                        data-note-id="{note.id}"
+                        on:mouseenter={() => (hoveredNoteId = note.id)}
+                        on:mouseleave={() => (hoveredNoteId = null)}
+                        class="flex items-center justify-between"
+                    >
                         <div
                             class="cursor-pointer"
                             on:click={() => openNote(note)}
@@ -550,26 +579,33 @@
                                 {note.title}
                             </div>
                         </div>
-                        <button
-                            class="p-1 hover:bg-gray-200 rounded"
-                            on:click={() => deleteNote(note.id)}
-                        >
-                            <!-- Heroicon Trash -->
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke-width="1.5"
-                                stroke="currentColor"
-                                class="size-6"
+                        {#if hoveredNoteId === note.id}
+                          <div in:fade={{ duration: 150 }} out:fade={{ duration: 150 }} class="flex space-x-2">
+                            <!-- Edit Button -->
+                            <button
+                              class="p-1 hover:bg-gray-200 rounded"
+                              on:click={() => {
+                                openNote(note);
+                                openEditNoteModal();
+                              }}
                             >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                                />
-                            </svg>
-                        </button>
+                              <!-- Heroicon Pencil -->
+                              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487a1.875 1.875 0 112.651 2.651L7.5 19.151 3 20.25l1.099-4.5L16.862 4.487z" />
+                              </svg>
+                            </button>
+                            <!-- Delete Button -->
+                            <button
+                              class="p-1 hover:bg-gray-200 rounded"
+                              on:click={() => deleteNote(note.id)}
+                            >
+                              <!-- Heroicon Trash -->
+                              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9L14.394 18.0m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084A2.25 2.25 0 015.84 19.673L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                              </svg>
+                            </button>
+                          </div>
+                        {/if}
                     </li>
                 {/each}
             </ul>

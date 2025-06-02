@@ -27,10 +27,40 @@ html {
 }
 .markdown-result ul,
 .markdown-result ol {
-    margin: 0 0 0.5rem 1rem;
+    margin: 0 0 0.5rem 1.2rem;
     list-style-position: outside;
     list-style-type: decimal !important;
 }
 .markdown-result li {
     margin-bottom: 0.25rem;
+}
+
+/* Sidebar smooth transitions */
+aside {
+  transition: width 0.3s ease-in-out, margin-left 0.3s ease-in-out, opacity 0.3s ease-in-out;
+}
+
+/* Global smooth transitions */
+header, main, section, div, ul, li, aside, textarea, input, button {
+  transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out, opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+}
+
+
+/* Hover effect for notes list items */
+#notesList li:hover {
+  background-color: #f0f0f0; /* light gray */
+  color: #003366; /* dark blue */
+}
+/* Fixed height and relative positioning for notes list items */
+#notesList li {
+  height: 30px;
+  position: relative;
+  overflow: hidden;
+}
+/* Disable animations and transitions for reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
