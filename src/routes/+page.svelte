@@ -528,7 +528,7 @@
 
     <div class="flex flex-1 overflow-hidden">
         <!-- Panel izquierdo: búsqueda y lista de notas -->
-        <aside class="w-64 bg-gray-100 border-r border-gray-200 flex flex-col">
+        <aside class="w-80 bg-gray-100 border-r border-gray-200 flex flex-col">
             <div class="p-4">
                 <input
                     type="text"
@@ -635,7 +635,7 @@
 
         <!-- Panel derecho: Instrucciones y Resultado -->
         <aside
-            class="w-1/4 border-l border-gray-200 flex flex-col p-4 overflow-y-auto bg-gray-50"
+            class="w-1/3 border-l border-gray-200 flex flex-col p-4 overflow-y-auto bg-gray-50"
         >
             <!-- Nuevo prompt -->
             <button
