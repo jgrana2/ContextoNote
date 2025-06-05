@@ -57,9 +57,14 @@
         note.content.toLowerCase().includes(contextSearchQuery.toLowerCase())
     );
 
-    // Chat interface
+    // Chat interface - Multiple conversations
     let userMessage = "";
     let chatHistory = [];
+    let chats = []; // Array of all chat conversations
+    let currentChatId = null;
+    let showChatHistory = false;
+    
+    // Chat structure: { id, title, messages, createdAt, updatedAt, contextNotes }
 
     // Para gestión de cadena de prompts
     let promptChain: { id: number; name: string; text: string }[] = [];
@@ -82,6 +87,19 @@
         // Aplicar altura fija tras montar
         notes.forEach(n => establecerAlturaNota(n, '30px'));
         
+        // Load saved chats
+        const savedChats = JSON.parse(localStorage.getItem("chats")) || [];
+        chats = savedChats;
+        
+        // Create default chat if none exist
+        if (chats.length === 0) {
+            createNewChat();
+        } else {
+            // Load the most recent chat
+            currentChatId = chats[0].id;
+            loadCurrentChat();
+        }
+
         // Initialize embedding model in the background
         try {
             embeddingModelStatus = "loading";
@@ -109,6 +127,92 @@
 
     function persistPrompts() {
         localStorage.setItem("prompts", JSON.stringify(prompts));
+    }
+
+    function persistChats() {
+        localStorage.setItem("chats", JSON.stringify(chats));
+    }
+
+    // Chat Management Functions
+    function createNewChat() {
+        const id = chats.length ? Math.max(...chats.map(c => c.id)) + 1 : 1;
+        const now = new Date();
+        const newChat = {
+            id,
+            title: "Nueva conversación",
+            messages: [],
+            createdAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+            contextNotes: [...selectedContextNotes] // Snapshot current context
+        };
+        
+        chats = [newChat, ...chats]; // Add to beginning
+        currentChatId = id;
+        chatHistory = [];
+        userMessage = "";
+        persistChats();
+        console.log(`📝 Created new chat: ${id}`);
+    }
+
+    function loadCurrentChat() {
+        const chat = chats.find(c => c.id === currentChatId);
+        if (chat) {
+            chatHistory = chat.messages;
+            selectedContextNotes = chat.contextNotes || [];
+            console.log(`💬 Loaded chat: ${chat.title} (${chat.messages.length} messages)`);
+        }
+    }
+
+    function switchToChat(chatId) {
+        // Save current chat state first
+        saveCurrentChatState();
+        
+        // Switch to new chat
+        currentChatId = chatId;
+        loadCurrentChat();
+        showChatHistory = false;
+    }
+
+    function saveCurrentChatState() {
+        if (currentChatId) {
+            const chatIndex = chats.findIndex(c => c.id === currentChatId);
+            if (chatIndex !== -1) {
+                chats[chatIndex].messages = chatHistory;
+                chats[chatIndex].contextNotes = [...selectedContextNotes];
+                chats[chatIndex].updatedAt = new Date().toISOString();
+                
+                // Update title based on first message if still default
+                if (chats[chatIndex].title === "Nueva conversación" && chatHistory.length > 0) {
+                    const firstUserMessage = chatHistory.find(m => m.role === "user");
+                    if (firstUserMessage) {
+                        chats[chatIndex].title = firstUserMessage.content.substring(0, 50) + 
+                            (firstUserMessage.content.length > 50 ? "..." : "");
+                    }
+                }
+                
+                persistChats();
+            }
+        }
+    }
+
+    function deleteChat(chatId) {
+        if (chats.length <= 1) {
+            alert("No puedes eliminar la última conversación");
+            return;
+        }
+        
+        const confirmDelete = confirm("¿Seguro que deseas eliminar esta conversación?");
+        if (confirmDelete) {
+            chats = chats.filter(c => c.id !== chatId);
+            
+            // If deleting current chat, switch to first remaining
+            if (currentChatId === chatId) {
+                currentChatId = chats[0].id;
+                loadCurrentChat();
+            }
+            
+            persistChats();
+        }
     }
 
     // Funciones para notas
@@ -339,6 +443,9 @@
         chatHistory = [...chatHistory, { role: "user", content: userMessage }];
         const currentMessage = userMessage;
         userMessage = "";
+        
+        // Save chat state after adding user message
+        saveCurrentChatState();
 
         // Construir prompt con contexto
         let structuredPrompt = "Por favor, utiliza la siguiente información de contexto y responde de forma clara:\n\n";
@@ -362,9 +469,11 @@
             
             const response = await sendToAI(structuredPrompt, true);
             
-            // La respuesta ya se actualiza en tiempo real en sendToAI
+            // Save chat state after AI response
+            saveCurrentChatState();
         } catch (error) {
             chatHistory[chatHistory.length - 1].content = `Error al obtener respuesta del LLM: ${error.message}`;
+            saveCurrentChatState();
         }
     }
 
@@ -917,6 +1026,81 @@
 
         <!-- Panel derecho: Chat Interface -->
         <aside class="w-1/3 border-l border-gray-200 flex flex-col bg-gray-50">
+            <!-- Chat Header -->
+            <div class="p-3 border-b border-gray-200 bg-white">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-lg font-bold text-gray-900">Chat</h2>
+                        {#if currentChatId}
+                            {@const currentChat = chats.find(c => c.id === currentChatId)}
+                            {#if currentChat}
+                                <span class="text-sm text-gray-500 truncate max-w-32" title={currentChat.title}>
+                                    {currentChat.title}
+                                </span>
+                            {/if}
+                        {/if}
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <!-- New Chat Button -->
+                        <button
+                            on:click={createNewChat}
+                            class="p-1 hover:bg-gray-100 rounded transition-colors"
+                            title="Nueva conversación"
+                        >
+                            <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                        </button>
+                        
+                        <!-- Chat History Toggle -->
+                        <button
+                            on:click={() => showChatHistory = !showChatHistory}
+                            class="p-1 hover:bg-gray-100 rounded transition-colors {showChatHistory ? 'bg-blue-100 text-blue-600' : 'text-gray-600'}"
+                            title="Historial de conversaciones"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chat History Panel -->
+            {#if showChatHistory}
+                <div class="border-b border-gray-200 bg-white max-h-64 overflow-y-auto">
+                    <div class="p-2">
+                        <h3 class="text-sm font-medium text-gray-700 mb-2">Conversaciones ({chats.length})</h3>
+                        <div class="space-y-1">
+                            {#each chats as chat}
+                                <div class="group flex items-center justify-between p-2 rounded hover:bg-gray-50 {chat.id === currentChatId ? 'bg-blue-50 border border-blue-200' : ''}">
+                                    <button
+                                        on:click={() => switchToChat(chat.id)}
+                                        class="flex-1 text-left"
+                                    >
+                                        <div class="text-sm font-medium text-gray-900 truncate">
+                                            {chat.title}
+                                        </div>
+                                        <div class="text-xs text-gray-500">
+                                            {chat.messages.length} mensajes • {new Date(chat.updatedAt).toLocaleDateString()}
+                                        </div>
+                                    </button>
+                                    <button
+                                        on:click={() => deleteChat(chat.id)}
+                                        class="p-1 hover:bg-red-100 rounded text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="Eliminar conversación"
+                                    >
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+                </div>
+            {/if}
+            
             <!-- Context Notes Selection -->
             <div class="border-b border-gray-200 p-2">
                 <!-- Selected Notes Display -->
