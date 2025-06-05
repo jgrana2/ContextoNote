@@ -6,5 +6,16 @@ export default defineConfig({
 	plugins: [ 
 		tailwindcss(),
 		sveltekit(),
-	]
+	],
+	define: {
+		global: 'globalThis',
+	},
+	optimizeDeps: {
+		include: ['@xenova/transformers']
+	},
+	server: {
+		fs: {
+			allow: ['..']
+		}
+	}
 });
