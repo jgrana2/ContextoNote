@@ -38,6 +38,7 @@
 
     // Contexto de notas para LLM
     let selectedContextNotes = [];
+    let manuallySelectedNotes = []; // Track manually selected notes
     let showContextDropdown = false;
     let contextSearchQuery = "";
     let isAutoSelecting = false;
@@ -45,6 +46,10 @@
     let similarityThreshold = 0.25; // Configurable threshold (0.0 to 1.0)
     let searchDebounceTimer = null;
     let isSearching = false;
+    
+    // Toast notification system
+    let toastMessage = "";
+    let showToast = false;
     // Computar el texto concatenado de notas seleccionadas
     $: contextText = selectedContextNotes
         .map((id) => notes.find((n) => n.id === id)?.content || "")
@@ -159,6 +164,7 @@
         if (chat) {
             chatHistory = chat.messages;
             selectedContextNotes = chat.contextNotes || [];
+            manuallySelectedNotes = chat.contextNotes || []; // Treat loaded notes as manually selected
             console.log(`💬 Loaded chat: ${chat.title} (${chat.messages.length} messages)`);
         }
     }
@@ -595,7 +601,7 @@
             navigator.clipboard
                 .writeText(llmResult)
                 .then(() => {
-                    alert("Resultado copiado al portapapeles");
+                    showToastNotification("Resultado copiado al portapapeles");
                 })
                 .catch((err) => {
                     console.error("Error copiando al portapapeles:", err);
@@ -603,21 +609,49 @@
         }
     }
 
+    // Toast notification system
+    function showToastNotification(message) {
+        toastMessage = message;
+        showToast = true;
+        
+        // Auto-hide after 2 seconds
+        setTimeout(() => {
+            showToast = false;
+        }, 2000);
+    }
+
+    // Copy message content to clipboard
+    async function copyMessageContent(content) {
+        try {
+            // Remove HTML tags for copying plain text
+            const plainText = content.replace(/<[^>]*>/g, '');
+            await navigator.clipboard.writeText(plainText);
+            showToastNotification("Copiado!");
+        } catch (error) {
+            console.error("Error copying message:", error);
+            showToastNotification("Error al copiar");
+        }
+    }
+
     // Funciones para contexto de notas
     function toggleContextNote(noteId) {
         if (selectedContextNotes.includes(noteId)) {
             selectedContextNotes = selectedContextNotes.filter(id => id !== noteId);
+            manuallySelectedNotes = manuallySelectedNotes.filter(id => id !== noteId);
         } else {
             selectedContextNotes = [...selectedContextNotes, noteId];
+            manuallySelectedNotes = [...manuallySelectedNotes, noteId];
         }
     }
 
     function removeContextNote(noteId) {
         selectedContextNotes = selectedContextNotes.filter(id => id !== noteId);
+        manuallySelectedNotes = manuallySelectedNotes.filter(id => id !== noteId);
     }
 
     function clearContextSelection() {
         selectedContextNotes = [];
+        manuallySelectedNotes = [];
     }
 
     function toggleContextDropdown() {
@@ -647,7 +681,8 @@
     // Perform real-time context search
     async function performRealtimeSearch(query) {
         if (!query.trim() || query.length < 3) {
-            selectedContextNotes = [];
+            // Only keep manually selected notes
+            selectedContextNotes = [...manuallySelectedNotes];
             isSearching = false;
             return;
         }
@@ -663,13 +698,18 @@
             const relevantNotes = await embeddingService.findSimilarNotesOptimized(query, notes, similarityThreshold);
             
             if (relevantNotes.length > 0) {
-                selectedContextNotes = relevantNotes.map(note => note.id);
+                // Combine manually selected notes with automatically found notes
+                const autoSelectedNotes = relevantNotes.map(note => note.id);
+                const combinedNotes = [...new Set([...manuallySelectedNotes, ...autoSelectedNotes])];
+                selectedContextNotes = combinedNotes;
+                
                 console.log(`📝 Found ${relevantNotes.length} relevant notes:`, relevantNotes.map(n => ({ 
                     title: n.title, 
                     similarity: (n.similarity * 100).toFixed(1) + '%'
                 })));
             } else {
-                selectedContextNotes = [];
+                // Only keep manually selected notes when no automatic matches found
+                selectedContextNotes = [...manuallySelectedNotes];
                 console.log('📝 No relevant notes found for current query');
             }
         } catch (error) {
@@ -684,7 +724,8 @@
         if (userMessage && embeddingModelStatus === "loaded") {
             debounceSearch(userMessage);
         } else if (!userMessage) {
-            selectedContextNotes = [];
+            // Only keep manually selected notes when no message
+            selectedContextNotes = [...manuallySelectedNotes];
             isSearching = false;
         }
     }
@@ -909,7 +950,7 @@
     <header
         class="flex items-center justify-between px-4 py-2 bg-gray-100 rounded-b-lg shadow"
     >
-        <div class="text-2xl font-bold text-gray-900">🗒️ ContextNote</div>
+        <div class="text-2xl font-bold text-gray-900">🗒️ ContextoNote</div>
         <button
             class="bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700"
         >
@@ -1244,14 +1285,25 @@
             <div class="flex-1 overflow-y-auto p-4 space-y-4">
                 {#each chatHistory as message}
                     <div class="flex {message.role === 'user' ? 'justify-end' : 'justify-start'}">
-                        <div class="{message.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200'} rounded-lg p-3">
+                        <div class="group relative max-w-[80%] {message.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200'} rounded-lg p-3">
                             {#if message.role === 'user'}
-                                <div class="text-sm">{message.content}</div>
+                                <div class="text-sm pr-6">{message.content}</div>
                             {:else}
-                                <div class="text-gray-800 text-sm markdown-result">
+                                <div class="text-gray-800 text-sm markdown-result pr-6">
                                     {@html renderMarkdown(message.content)}
                                 </div>
                             {/if}
+                            
+                            <!-- Copy Button -->
+                            <button
+                                on:click={() => copyMessageContent(message.content)}
+                                class="absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 {message.role === 'user' ? 'bg-blue-700 hover:bg-blue-800 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}"
+                                title="Copiar mensaje"
+                            >
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                                </svg>
+                            </button>
                         </div>
                     </div>
                 {/each}
@@ -1292,3 +1344,19 @@
         </aside>
     </div>
 </div>
+
+<!-- Toast Notification -->
+{#if showToast}
+    <div 
+        class="fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 transition-all duration-300"
+        in:fade={{ duration: 200 }}
+        out:fade={{ duration: 200 }}
+    >
+        <div class="flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            {toastMessage}
+        </div>
+    </div>
+{/if}

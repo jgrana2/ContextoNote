@@ -17,7 +17,7 @@
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
 		"svelte": "^5.0.0",
 		"svelte-check": "^4.0.0",
-		"typescript": "^5.0.0",
+		"typescript": "^5.8.3",
 		"vite": "^6.2.6"
 	},
 	"dependencies": {
@@ -25,6 +25,7 @@
 		"@xenova/transformers": "^2.17.2",
 		"markdown-it": "^14.1.0",
 		"marked": "^15.0.12",
+		"openai": "^5.3.0",
 		"tailwindcss": "^4.1.8",
 		"together-ai": "^0.16.0"
 	}
