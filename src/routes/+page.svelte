@@ -46,6 +46,7 @@
     let similarityThreshold = 0.25; // Configurable threshold (0.0 to 1.0)
     let searchDebounceTimer = null;
     let isSearching = false;
+    let justSentMessage = false;
     
     // Toast notification system
     let toastMessage = "";
@@ -85,78 +86,100 @@
 
     // Función para cargar notas y prompts desde localStorage al iniciar
     onMount(async () => {
-        const savedNotes = JSON.parse(localStorage.getItem("notes")) || [];
-        notes = savedNotes;
-        const savedPrompts = JSON.parse(localStorage.getItem("prompts")) || [];
-        prompts = savedPrompts;
-        // Aplicar altura fija tras montar
-        notes.forEach(n => establecerAlturaNota(n, '30px'));
-        
-        // Load saved chats
-        const savedChats = JSON.parse(localStorage.getItem("chats")) || [];
-        chats = savedChats;
-        
-        // Create default chat if none exist
-        if (chats.length === 0) {
-            createNewChat();
+    // Fetch notes from SQLite API
+    try {
+        const res = await fetch('/api/notes');
+        if (res.ok) {
+            notes = await res.json();
+            // Aplicar altura fija tras montar
+            notes.forEach(n => establecerAlturaNota(n, '30px'));
         } else {
-            // Load the most recent chat
-            currentChatId = chats[0].id;
-            loadCurrentChat();
+            notes = [];
         }
+    } catch (e) {
+        notes = [];
+    }
 
-        // Initialize embedding model in the background
-        try {
-            embeddingModelStatus = "loading";
-            await embeddingService.initialize();
-            embeddingModelStatus = "loaded";
-            console.log('Embedding model ready for local semantic search');
-            
-            // Process existing notes in background
-            if (notes.length > 0) {
-                console.log(`Starting background processing of ${notes.length} existing notes...`);
-                embeddingService.processNotes(notes).catch(error => {
-                    console.warn('Error processing existing notes:', error);
-                });
+    // Load prompts from localStorage
+    const savedPrompts = JSON.parse(localStorage.getItem("prompts")) || [];
+    prompts = savedPrompts;
+    
+    // Load conversations from SQLite API
+    try {
+        const res = await fetch('/api/conversations');
+        if (res.ok) {
+            chats = await res.json();
+            if (chats.length === 0) {
+                await createNewChat();
+            } else {
+                currentChatId = chats[0].id;
+                loadCurrentChat();
             }
-        } catch (error) {
-            embeddingModelStatus = "error";
-            console.warn('Failed to load embedding model, falling back to keyword search');
+        } else {
+            chats = [];
+            await createNewChat();
         }
+    } catch (e) {
+        chats = [];
+        await createNewChat();
+    }
+
+    // Initialize embedding model in the background
+    try {
+        embeddingModelStatus = "loading";
+        await embeddingService.initialize();
+        embeddingModelStatus = "loaded";
+        console.log('Embedding model ready for local semantic search');
+        if (notes.length > 0) {
+            console.log(`Starting background processing of ${notes.length} existing notes...`);
+            embeddingService.processNotes(notes).catch(error => {
+                console.warn('Error processing existing notes:', error);
+            });
+        }
+    } catch (error) {
+        embeddingModelStatus = "error";
+        console.warn('Failed to load embedding model, falling back to keyword search');
+    }
     });
 
-    // Sincroniza localStorage
-    function persistNotes() {
-        localStorage.setItem("notes", JSON.stringify(notes));
+    // Sincroniza notas con la API SQLite
+    async function persistNotes() {
+        // Not needed: notes are now persisted via API calls
     }
 
     function persistPrompts() {
         localStorage.setItem("prompts", JSON.stringify(prompts));
     }
 
-    function persistChats() {
-        localStorage.setItem("chats", JSON.stringify(chats));
+    async function persistChats() {
+        // Not needed anymore - conversations are now persisted via API calls
     }
 
     // Chat Management Functions
-    function createNewChat() {
-        const id = chats.length ? Math.max(...chats.map(c => c.id)) + 1 : 1;
-        const now = new Date();
-        const newChat = {
-            id,
-            title: "Nueva conversación",
-            messages: [],
-            createdAt: now.toISOString(),
-            updatedAt: now.toISOString(),
-            contextNotes: [...selectedContextNotes] // Snapshot current context
-        };
-        
-        chats = [newChat, ...chats]; // Add to beginning
-        currentChatId = id;
-        chatHistory = [];
-        userMessage = "";
-        persistChats();
-        console.log(`📝 Created new chat: ${id}`);
+    async function createNewChat() {
+        try {
+            const res = await fetch('/api/conversations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: "Nueva conversación",
+                    contextNotes: [...selectedContextNotes]
+                })
+            });
+            
+            if (res.ok) {
+                const newChat = await res.json();
+                chats = [newChat, ...chats]; // Add to beginning
+                currentChatId = newChat.id;
+                chatHistory = [];
+                userMessage = "";
+                console.log(`📝 Created new chat: ${newChat.id}`);
+            } else {
+                showToastNotification("Error al crear nueva conversación");
+            }
+        } catch (e) {
+            showToastNotification("Error al crear nueva conversación");
+        }
     }
 
     function loadCurrentChat() {
@@ -179,29 +202,46 @@
         showChatHistory = false;
     }
 
-    function saveCurrentChatState() {
+    async function saveCurrentChatState() {
         if (currentChatId) {
             const chatIndex = chats.findIndex(c => c.id === currentChatId);
             if (chatIndex !== -1) {
-                chats[chatIndex].messages = chatHistory;
-                chats[chatIndex].contextNotes = [...selectedContextNotes];
-                chats[chatIndex].updatedAt = new Date().toISOString();
+                let newTitle = chats[chatIndex].title;
                 
                 // Update title based on first message if still default
                 if (chats[chatIndex].title === "Nueva conversación" && chatHistory.length > 0) {
                     const firstUserMessage = chatHistory.find(m => m.role === "user");
                     if (firstUserMessage) {
-                        chats[chatIndex].title = firstUserMessage.content.substring(0, 50) + 
+                        newTitle = firstUserMessage.content.substring(0, 50) + 
                             (firstUserMessage.content.length > 50 ? "..." : "");
                     }
                 }
                 
-                persistChats();
+                // Update conversation in database
+                try {
+                    await fetch('/api/conversations', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: currentChatId,
+                            title: newTitle,
+                            contextNotes: [...selectedContextNotes]
+                        })
+                    });
+                    
+                    // Update local state
+                    chats[chatIndex].title = newTitle;
+                    chats[chatIndex].messages = chatHistory;
+                    chats[chatIndex].contextNotes = [...selectedContextNotes];
+                    chats[chatIndex].updatedAt = new Date().toISOString();
+                } catch (e) {
+                    console.error('Error saving chat state:', e);
+                }
             }
         }
     }
 
-    function deleteChat(chatId) {
+    async function deleteChat(chatId) {
         if (chats.length <= 1) {
             alert("No puedes eliminar la última conversación");
             return;
@@ -209,15 +249,27 @@
         
         const confirmDelete = confirm("¿Seguro que deseas eliminar esta conversación?");
         if (confirmDelete) {
-            chats = chats.filter(c => c.id !== chatId);
-            
-            // If deleting current chat, switch to first remaining
-            if (currentChatId === chatId) {
-                currentChatId = chats[0].id;
-                loadCurrentChat();
+            try {
+                const res = await fetch(`/api/conversations?id=${chatId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (res.ok) {
+                    chats = chats.filter(c => c.id !== chatId);
+                    
+                    // If deleting current chat, switch to first remaining
+                    if (currentChatId === chatId) {
+                        currentChatId = chats[0].id;
+                        loadCurrentChat();
+                    }
+                    
+                    showToastNotification("Conversación eliminada");
+                } else {
+                    showToastNotification("Error al eliminar la conversación");
+                }
+            } catch (e) {
+                showToastNotification("Error al eliminar la conversación");
             }
-            
-            persistChats();
         }
     }
 
@@ -237,50 +289,13 @@
         noteContent = note.content;
     }
 
-    function saveNote() {
-        if (selectedNoteId !== null) {
-            const idx = notes.findIndex((n) => n.id === selectedNoteId);
-            if (idx !== -1) {
-                notes[idx].title = noteTitle;
-                notes[idx].content = noteContent;
-                persistNotes();
-                
-                // Reprocess embedding for edited note
-                if (embeddingModelStatus === "loaded") {
-                    embeddingService.processNote(notes[idx]).catch(error => {
-                        console.warn('Error reprocessing edited note embedding:', error);
-                    });
-                }
-            }
-        }
-    }
-
-    function deleteNote(noteId) {
-        const confirmDelete = confirm("¿Seguro que deseas eliminar esta nota?");
-        if (confirmDelete) {
-            notes = notes.filter((n) => n.id !== noteId);
-            persistNotes();
-            
-            // Remove embedding for deleted note
-            if (embeddingModelStatus === "loaded") {
-                embeddingService.removeNoteEmbedding(noteId);
-            }
-            
-            if (selectedNoteId === noteId) {
-                selectedNoteId = null;
-                noteTitle = "";
-                noteContent = "";
-            }
-        }
-    }
-
-    function createNewNote() {
+    async function createNewNote() {
         if (hasUnsavedChanges()) {
             const confirmDiscard = confirm(
                 "Hay cambios sin guardar. ¿Deseas guardar antes de crear nueva nota?",
             );
             if (confirmDiscard) {
-                saveNote();
+                await saveNote();
             }
         }
         selectedNoteId = null;
@@ -325,7 +340,6 @@
     }
 
     async function saveNewNote() {
-        const id = notes.length ? Math.max(...notes.map((n) => n.id)) + 1 : 1;
         const formattedDateTime = new Date().toLocaleString('es-CO', {
             weekday: 'long',
             year: 'numeric',
@@ -341,26 +355,35 @@
         const day = dateObj.getDate().toString().padStart(2, '0');
         const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
         const rawDate = `${day}/${month}`;
-        console.log(rawDate);
-        const note = {
-            id,
-            dateRaw: rawDate,
-            date: capitalized,
+        const noteData = {
             title: newNoteTitle || "Nueva nota",
             content: newNoteContent,
+            date: capitalized,
+            dateRaw: rawDate
         };
-        notes = [note, ...notes];
-        persistNotes();
-        // Aplicar altura fija a la nueva nota
-        establecerAlturaNota(note, '30px');
-        showNoteModal = false;
-        openNote(note);
-        
-        // Process embedding for new note
-        if (embeddingModelStatus === "loaded") {
-            embeddingService.processNote(note).catch(error => {
-                console.warn('Error processing new note embedding:', error);
+        try {
+            const res = await fetch('/api/notes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(noteData)
             });
+            if (res.ok) {
+                const note = await res.json();
+                notes = [note, ...notes];
+                establecerAlturaNota(note, '30px');
+                showNoteModal = false;
+                openNote(note);
+                // Process embedding for new note
+                if (embeddingModelStatus === "loaded") {
+                    embeddingService.processNote(note).catch(error => {
+                        console.warn('Error processing new note embedding:', error);
+                    });
+                }
+            } else {
+                showToastNotification('Error al guardar la nota');
+            }
+        } catch (e) {
+            showToastNotification('Error al guardar la nota');
         }
     }
 
@@ -445,41 +468,86 @@
     async function sendChatMessage() {
         if (!userMessage.trim()) return;
         
-        // Agregar mensaje del usuario al historial
-        chatHistory = [...chatHistory, { role: "user", content: userMessage }];
         const currentMessage = userMessage;
+        justSentMessage = true;
         userMessage = "";
         
-        // Save chat state after adding user message
-        saveCurrentChatState();
-
-        // Construir prompt con contexto
-        let structuredPrompt = "Por favor, utiliza la siguiente información de contexto y responde de forma clara:\n\n";
+        // Reset the flag after a short delay
+        setTimeout(() => {
+            justSentMessage = false;
+        }, 100);
         
-        if (selectedContextNotes.length > 0) {
-            structuredPrompt += "=== CONTEXTO ===\n";
-            selectedContextNotes.forEach((id, index) => {
-                const note = notes.find((n) => n.id === id);
-                if (note) {
-                    structuredPrompt += `Nota ${index + 1} (Fecha: ${note.date}, Título: ${note.title}):\n${note.content}\n\n`;
-                }
-            });
-        }
-        
-        structuredPrompt += "=== PETICIÓN ===\n";
-        structuredPrompt += `${currentMessage.trim()}\n`;
-
         try {
-            // Agregar mensaje "cargando" del asistente
-            chatHistory = [...chatHistory, { role: "assistant", content: "Cargando respuesta..." }];
+            // Save user message to database
+            const userMsgRes = await fetch('/api/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    conversationId: currentChatId,
+                    role: "user",
+                    content: currentMessage
+                })
+            });
             
-            const response = await sendToAI(structuredPrompt, true);
-            
-            // Save chat state after AI response
-            saveCurrentChatState();
+            if (userMsgRes.ok) {
+                // Add user message to local history
+                chatHistory = [...chatHistory, { role: "user", content: currentMessage }];
+                
+                // Update chat state (title, contextNotes)
+                await saveCurrentChatState();
+
+                // Construir prompt con contexto
+                let structuredPrompt = "Por favor, utiliza la siguiente información de contexto y responde de forma clara:\n\n";
+                
+                if (selectedContextNotes.length > 0) {
+                    structuredPrompt += "=== CONTEXTO ===\n";
+                    selectedContextNotes.forEach((id, index) => {
+                        const note = notes.find((n) => n.id === id);
+                        if (note) {
+                            structuredPrompt += `Nota ${index + 1} (Fecha: ${note.date}, Título: ${note.title}):\n${note.content}\n\n`;
+                        }
+                    });
+                }
+                
+                structuredPrompt += "=== PETICIÓN ===\n";
+                structuredPrompt += `${currentMessage.trim()}\n`;
+
+                // Add loading message to local history
+                chatHistory = [...chatHistory, { role: "assistant", content: "Cargando respuesta..." }];
+                
+                const response = await sendToAI(structuredPrompt, true);
+                
+                // Save assistant message to database
+                await fetch('/api/messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        conversationId: currentChatId,
+                        role: "assistant",
+                        content: response
+                    })
+                });
+                
+            } else {
+                showToastNotification("Error al enviar mensaje");
+            }
         } catch (error) {
             chatHistory[chatHistory.length - 1].content = `Error al obtener respuesta del LLM: ${error.message}`;
-            saveCurrentChatState();
+            
+            // Try to save error message to database
+            try {
+                await fetch('/api/messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        conversationId: currentChatId,
+                        role: "assistant",
+                        content: chatHistory[chatHistory.length - 1].content
+                    })
+                });
+            } catch (e) {
+                console.error('Error saving error message:', e);
+            }
         }
     }
 
@@ -547,26 +615,53 @@
 
     // Función de búsqueda simple (por texto o por fecha/etiquetas placeholder)
     let searchQuery = "";
-    function filterNotes() {
+    async function filterNotes() {
         if (!searchQuery) {
-            // Recargar notas desde localStorage solo en función, no en top-level
-            const saved = JSON.parse(localStorage.getItem("notes")) || [];
-            notes = saved;
+            // Refetch all notes from API
+            try {
+                const res = await fetch('/api/notes');
+                notes = res.ok ? await res.json() : [];
+            } catch {
+                notes = [];
+            }
         } else {
-            notes = (JSON.parse(localStorage.getItem("notes")) || []).filter(
-                (n) =>
-                    n.title.includes(searchQuery) ||
-                    n.content.includes(searchQuery),
-            );
+            // Fetch and filter client-side (or implement search in API)
+            try {
+                const res = await fetch('/api/notes');
+                const allNotes = res.ok ? await res.json() : [];
+                notes = allNotes.filter(
+                    (n) =>
+                        n.title.includes(searchQuery) ||
+                        n.content.includes(searchQuery),
+                );
+            } catch {
+                notes = [];
+            }
         }
     }
 
     async function sendToAI(prompt: string, updateChat: boolean = false): Promise<string> {
+        // Llama al endpoint del servidor para obtener la respuesta del LLM (OpenAI)
         const res = await fetch("/api/ai", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ prompt }),
         });
+
+        if (!res.ok) {
+            // Intenta parsear el error como JSON, si no, usa texto
+            let errorMsg = "Error desconocido";
+            try {
+                const data = await res.json();
+                errorMsg = data.error || data.details || res.statusText;
+            } catch {
+                try {
+                    errorMsg = await res.text();
+                } catch {}
+            }
+            throw new Error(errorMsg);
+        }
+
         if (!res.body) {
             throw new Error("El servidor no abrió un stream válido");
         }
@@ -723,8 +818,8 @@
     $: {
         if (userMessage && embeddingModelStatus === "loaded") {
             debounceSearch(userMessage);
-        } else if (!userMessage) {
-            // Only keep manually selected notes when no message
+        } else if (!userMessage && !justSentMessage) {
+            // Only clear context when user manually clears input, not when message is sent
             selectedContextNotes = [...manuallySelectedNotes];
             isSearching = false;
         }
@@ -789,6 +884,35 @@
             selectedContextNotes = relevantNotes.slice(0, 10).map(note => note.id);
         } finally {
             isAutoSelecting = false;
+        }
+    }
+
+    async function deleteNote(noteId) {
+        const confirmDelete = confirm("¿Seguro que deseas eliminar esta nota?");
+        if (confirmDelete) {
+            try {
+                const res = await fetch(`/api/notes?id=${noteId}`, {
+                    method: 'DELETE'
+                });
+                if (res.ok) {
+                    notes = notes.filter(n => n.id !== noteId);
+                    // If we're viewing the deleted note, clear the view
+                    if (selectedNoteId === noteId) {
+                        selectedNoteId = null;
+                        noteTitle = "";
+                        noteContent = "";
+                        noteDate = "";
+                    }
+                    // Remove from context selection if present
+                    selectedContextNotes = selectedContextNotes.filter(id => id !== noteId);
+                    manuallySelectedNotes = manuallySelectedNotes.filter(id => id !== noteId);
+                    showToastNotification("Nota eliminada");
+                } else {
+                    showToastNotification("Error al eliminar la nota");
+                }
+            } catch (e) {
+                showToastNotification("Error al eliminar la nota");
+            }
         }
     }
 
@@ -1348,7 +1472,7 @@
 <!-- Toast Notification -->
 {#if showToast}
     <div 
-        class="fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 transition-all duration-300"
+        class="fixed bottom-4 left-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 transition-all duration-300"
         in:fade={{ duration: 200 }}
         out:fade={{ duration: 200 }}
     >
