@@ -142,17 +142,8 @@
     }
     });
 
-    // Sincroniza notas con la API SQLite
-    async function persistNotes() {
-        // Not needed: notes are now persisted via API calls
-    }
-
     function persistPrompts() {
         localStorage.setItem("prompts", JSON.stringify(prompts));
-    }
-
-    async function persistChats() {
-        // Not needed anymore - conversations are now persisted via API calls
     }
 
     // Chat Management Functions
@@ -468,19 +459,6 @@
         }
     }
 
-    // Añadir un prompt a la cadena (evita duplicados)
-    function addPromptToChain(p: { id: number; name: string; text: string }) {
-        // Evitar duplicados: si ya existe en cadena, no lo añade
-        if (!promptChain.find((item) => item.id === p.id)) {
-            promptChain = [...promptChain, p];
-        }
-    }
-
-    // Limpiar la cadena de prompts
-    function clearPromptChain() {
-        promptChain = [];
-    }
-
     // Enviar mensaje de chat
     async function sendChatMessage() {
         if (!userMessage.trim()) return;
@@ -566,68 +544,6 @@
                 console.error('Error saving error message:', e);
             }
         }
-    }
-
-    // Ejecutar prompt o cadena de prompts
-    async function executePrompt() {
-        if (promptChain.length === 0) {
-            // Si no hay cadena, se comporta igual que antes
-            let structuredPrompt =
-                "Por favor, utiliza la siguiente información de contexto y responde de forma clara:\n\n";
-            if (selectedContextNotes.length > 0) {
-                structuredPrompt += "=== CONTEXTO ===\n";
-                selectedContextNotes.forEach((id, index) => {
-                    const note = notes.find((n) => n.id === id);
-                    if (note) {
-                        structuredPrompt += `Nota ${index + 1} (Fecha: ${note.date}, Título: ${note.title}):\n${note.content}\n\n`;
-                    }
-                });
-            }
-            structuredPrompt += "=== PETICIÓN ===\n";
-            structuredPrompt += `${promptText.trim()}\n`;
-            try {
-                llmResult = "Cargando respuesta...";
-                llmResult = await sendToAI(structuredPrompt);
-            } catch (error) {
-                llmResult = `Error al obtener respuesta del LLM: ${error.message}`;
-            }
-            return;
-        }
-
-        // Si hay prompts en cadena, encadenar pasos
-        let previousOutput = "";
-        for (let i = 0; i < promptChain.length; i++) {
-            const p = promptChain[i];
-            let stepPrompt = "";
-            if (i === 0) {
-                // Incluir contexto en el primer paso
-                stepPrompt =
-                    "Por favor, utiliza la siguiente información de contexto y responde de forma clara:\n\n";
-                if (selectedContextNotes.length > 0) {
-                    stepPrompt += "=== CONTEXTO ===\n";
-                    selectedContextNotes.forEach((id, index) => {
-                        const note = notes.find((n) => n.id === id);
-                        if (note) {
-                            stepPrompt += `Nota ${index + 1} (Fecha: ${note.date}, Título: ${note.title}):\n${note.content}\n\n`;
-                        }
-                    });
-                }
-                stepPrompt += `=== PETICIÓN (${p.name}) ===\n${p.text.trim()}\n`;
-            } else {
-                // Los pasos intermedios toman la salida previa como entrada
-                stepPrompt = `Basándote en la siguiente respuesta previa:\n\n${previousOutput}\n\nRealiza la siguiente petición (${p.name}):\n${p.text.trim()}\n`;
-            }
-
-            try {
-                llmResult = `Cargando paso ${i + 1} (${p.name})...`;
-                previousOutput = await sendToAI(stepPrompt);
-            } catch (error) {
-                llmResult = `Error en paso ${i + 1} (${p.name}): ${error.message}`;
-                return;
-            }
-        }
-        // Al finalizar todos los pasos, mostrar el output final
-        llmResult = previousOutput;
     }
 
     // Función de búsqueda simple (por texto o por fecha/etiquetas placeholder)
