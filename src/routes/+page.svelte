@@ -317,22 +317,39 @@
       showEditNoteModal = false;
     }
 
-    function saveEditedNote() {
+    async function saveEditedNote() {
       if (selectedNoteId !== null) {
         const idx = notes.findIndex((n) => n.id === selectedNoteId);
         if (idx !== -1) {
-          notes[idx].title = editNoteTitle;
-          notes[idx].content = editNoteContent;
-          persistNotes();
-          // Actualizar vista Markdown
-          noteTitle = editNoteTitle;
-          noteContent = editNoteContent;
-          
-          // Reprocess embedding for edited note
-          if (embeddingModelStatus === "loaded") {
-            embeddingService.processNote(notes[idx]).catch(error => {
-              console.warn('Error reprocessing edited note embedding:', error);
+          try {
+            const res = await fetch('/api/notes', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: selectedNoteId,
+                title: editNoteTitle,
+                content: editNoteContent
+              })
             });
+
+            if (res.ok) {
+              const updatedNote = await res.json();
+              notes[idx] = updatedNote;
+              // Actualizar vista Markdown
+              noteTitle = editNoteTitle;
+              noteContent = editNoteContent;
+              
+              // Reprocess embedding for edited note
+              if (embeddingModelStatus === "loaded") {
+                embeddingService.processNote(notes[idx]).catch(error => {
+                  console.warn('Error reprocessing edited note embedding:', error);
+                });
+              }
+            } else {
+              console.error('Failed to update note:', await res.text());
+            }
+          } catch (error) {
+            console.error('Error updating note:', error);
           }
         }
       }

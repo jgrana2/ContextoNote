@@ -18,6 +18,25 @@ export async function POST({ request }: RequestEvent) {
   });
 }
 
+export async function PUT({ request }: RequestEvent) {
+  const { id, title, content } = await request.json();
+  if (!id || !title || !content) {
+    return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400 });
+  }
+  
+  const stmt = db.prepare('UPDATE notes SET title = ?, content = ? WHERE id = ?');
+  const info = stmt.run(title, content, id);
+  
+  if (info.changes === 0) {
+    return new Response(JSON.stringify({ error: 'Note not found' }), { status: 404 });
+  }
+  
+  const updatedNote = db.prepare('SELECT * FROM notes WHERE id = ?').get(id);
+  return new Response(JSON.stringify(updatedNote), {
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
 export async function DELETE({ url }: RequestEvent) {
   const id = url.searchParams.get('id');
   if (!id) {
