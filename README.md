@@ -2,6 +2,8 @@
 
 A modern note-taking application that combines the simplicity of traditional notes with the power of AI and semantic search. Built with SvelteKit, ContextoNote transforms your notes into an intelligent knowledge base where information finds you.
 
+<img width="664" height="337" alt="screenshot" src="https://github.com/user-attachments/assets/554a9586-40e5-4691-a154-ff2090c975ea" />
+
 ## ✨ Features
 
 - **Local AI Embeddings**: Client-side semantic search with configurable models
