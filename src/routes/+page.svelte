@@ -176,16 +176,25 @@
     function loadCurrentChat() {
         const chat = chats.find(c => c.id === currentChatId);
         if (chat) {
-            chatHistory = chat.messages;
+            chatHistory = chat.messages || [];
             selectedContextNotes = chat.contextNotes || [];
             manuallySelectedNotes = chat.contextNotes || []; // Treat loaded notes as manually selected
             console.log(`💬 Loaded chat: ${chat.title} (${chat.messages.length} messages)`);
+        } else {
+            // Handle case where chat is not found (e.g., after deletion)
+            if (chats.length > 0) {
+                switchToChat(chats[0].id);
+            } else {
+                createNewChat();
+            }
         }
     }
 
-    function switchToChat(chatId) {
+    async function switchToChat(chatId) {
+        if (currentChatId === chatId) return; // Avoid unnecessary switching
+
         // Save current chat state first
-        saveCurrentChatState();
+        await saveCurrentChatState();
         
         // Switch to new chat
         currentChatId = chatId;
@@ -194,40 +203,41 @@
     }
 
     async function saveCurrentChatState() {
-        if (currentChatId) {
-            const chatIndex = chats.findIndex(c => c.id === currentChatId);
-            if (chatIndex !== -1) {
-                let newTitle = chats[chatIndex].title;
+        if (!currentChatId) return;
+
+        const chatIndex = chats.findIndex(c => c.id === currentChatId);
+        if (chatIndex !== -1) {
+            // Update the messages in our local source of truth `chats` array
+            chats[chatIndex].messages = [...chatHistory];
+            chats[chatIndex].contextNotes = [...selectedContextNotes];
+
+            let newTitle = chats[chatIndex].title;
+            
+            // Update title based on first message if still default
+            if (chats[chatIndex].title === "Nueva conversación" && chatHistory.length > 0) {
+                const firstMessage = chatHistory[0].content.substring(0, 40);
+                newTitle = firstMessage.includes('\n') ? firstMessage.split('\n')[0] : firstMessage;
+                chats[chatIndex].title = newTitle;
+            }
+            
+            // Update conversation in database
+            try {
+                const res = await fetch(`/api/conversations?id=${currentChatId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: newTitle,
+                        messages: chats[chatIndex].messages,
+                        contextNotes: chats[chatIndex].contextNotes
+                    })
+                });
                 
-                // Update title based on first message if still default
-                if (chats[chatIndex].title === "Nueva conversación" && chatHistory.length > 0) {
-                    const firstUserMessage = chatHistory.find(m => m.role === "user");
-                    if (firstUserMessage) {
-                        newTitle = firstUserMessage.content.substring(0, 50) + 
-                            (firstUserMessage.content.length > 50 ? "..." : "");
-                    }
+                if (res.ok) {
+                    const updatedChat = await res.json();
+                    chats[chatIndex].updatedAt = updatedChat.updatedAt;
                 }
-                
-                // Update conversation in database
-                try {
-                    await fetch('/api/conversations', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            id: currentChatId,
-                            title: newTitle,
-                            contextNotes: [...selectedContextNotes]
-                        })
-                    });
-                    
-                    // Update local state
-                    chats[chatIndex].title = newTitle;
-                    chats[chatIndex].messages = chatHistory;
-                    chats[chatIndex].contextNotes = [...selectedContextNotes];
-                    chats[chatIndex].updatedAt = new Date().toISOString();
-                } catch (e) {
-                    console.error('Error saving chat state:', e);
-                }
+            } catch (e) {
+                console.error("Error saving chat state:", e);
             }
         }
     }
@@ -1305,6 +1315,7 @@
                             on:click={clearContextSelection}
                             class="px-2 py-2 text-xs text-gray-500 hover:text-gray-700 rounded hover:bg-gray-100"
                             title="Limpiar selección"
+                            aria-label="Limpiar selección de contexto"
                         >
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -1356,6 +1367,7 @@
                                 on:click={() => copyMessageContent(message.content)}
                                 class="absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 {message.role === 'user' ? 'bg-blue-700 hover:bg-blue-800 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}"
                                 title="Copiar mensaje"
+                                aria-label="Copiar mensaje"
                             >
                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
