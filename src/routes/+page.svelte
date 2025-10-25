@@ -3,10 +3,13 @@
     import { marked } from "marked";
     import { fade } from "svelte/transition";
     import { embeddingService } from "$lib/embeddings";
+    import NoteSidebar from "../components/NoteSidebar.svelte";
 
-    // Estado de notas usando localStorage
+    // Estado de notas y carpetas
     let notes = [];
+    let folders = [];
     let selectedNoteId = null;
+    let selectedFolderId = null;
     let noteDate = "";
     let noteContent = "";
     let noteTitle = "";
@@ -84,8 +87,20 @@
       }
     }
 
-    // Función para cargar notas y prompts desde localStorage al iniciar
+    // Función para cargar notas, carpetas y prompts al iniciar
     onMount(async () => {
+    // Fetch folders from SQLite API
+    try {
+        const res = await fetch('/api/folders');
+        if (res.ok) {
+            folders = await res.json();
+        } else {
+            folders = [];
+        }
+    } catch (e) {
+        folders = [];
+    }
+
     // Fetch notes from SQLite API
     try {
         const res = await fetch('/api/notes');
@@ -377,7 +392,8 @@
             title: newNoteTitle || "Nueva nota",
             content: newNoteContent,
             date: capitalized,
-            dateRaw: rawDate
+            dateRaw: rawDate,
+            folderId: selectedFolderId // Add note to currently selected folder
         };
         try {
             const res = await fetch('/api/notes', {
@@ -1026,101 +1042,43 @@
     </header>
 
     <div class="flex flex-1 overflow-hidden">
-        <!-- Panel izquierdo: búsqueda y lista de notas -->
-        <aside class="w-80 bg-gray-100 border-r border-gray-200 flex flex-col">
-            <div class="p-4">
-                <input
-                    type="text"
-                    placeholder="Buscar notas..."
-                    bind:value={searchQuery}
-                    on:input={filterNotes}
-                    class="w-full border border-gray-300 bg-white rounded px-3 py-2 text-gray-800"
-                />
-            </div>
-            <div class="p-4">
-                <button
-                    class="flex items-center w-full p-2 hover:bg-gray-200 rounded transition"
-                    on:click={createNewNote}
-                >
-                    <!-- Heroicon Plus Circle -->
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-6 w-6 text-gray-800"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                    >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M12 4v16m8-8H4"
-                        />
-                    </svg>
-                    <span class="ml-3 font-medium text-gray-900"
-                        >Nueva Nota</span
-                    >
-                </button>
-            </div>
-            <ul id="notesList" class="flex-1 overflow-y-auto p-4 space-y-2">
-                {#each notes as note}
-                    <li
-                        data-note-id="{note.id}"
-                        on:mouseenter={() => (hoveredNoteId = note.id)}
-                        on:mouseleave={() => (hoveredNoteId = null)}
-                        class="flex items-center justify-between"
-                    >
-                        <div
-                            class="cursor-pointer"
-                            on:click={() => openNote(note)}
-                        >
-                            <div class="font-medium text-gray-900">
-                                {note.title}
-                            </div>
-                        </div>
-                        {#if hoveredNoteId === note.id}
-                          <div in:fade={{ duration: 150 }} out:fade={{ duration: 150 }} class="flex space-x-2">
-                            <!-- Edit Button -->
-                            <button
-                              class="p-1 hover:bg-gray-200 rounded"
-                              on:click={() => {
-                                openNote(note);
-                                openEditNoteModal();
-                              }}
-                            >
-                              <!-- Heroicon Pencil -->
-                              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487a1.875 1.875 0 112.651 2.651L7.5 19.151 3 20.25l1.099-4.5L16.862 4.487z" />
-                              </svg>
-                            </button>
-                            <!-- Delete Button -->
-                            <button
-                              class="p-1 hover:bg-gray-200 rounded"
-                              on:click={() => deleteNote(note.id)}
-                            >
-                              <!-- Heroicon Trash -->
-                              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9L14.394 18.0m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084A2.25 2.25 0 015.84 19.673L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                              </svg>
-                            </button>
-                          </div>
-                        {/if}
-                    </li>
-                {/each}
-            </ul>
-        </aside>
+        <!-- Panel izquierdo: Nuevo sidebar con carpetas y vistas -->
+        <NoteSidebar
+            bind:notes
+            bind:folders
+            bind:selectedNoteId
+            bind:selectedFolderId
+            bind:searchQuery
+            onNoteClick={openNote}
+            onNoteDelete={deleteNote}
+            onNoteEdit={(note) => {
+                openNote(note);
+                openEditNoteModal();
+            }}
+            onCreateNote={createNewNote}
+            onSearch={filterNotes}
+            {showToastNotification}
+        />
 
         <!-- Panel central: Contenido de la nota -->
         <main class="flex-1 overflow-y-auto p-4">
           {#if selectedNoteId !== null}
             <div class="flex items-center justify-between text-gray-400 mb-2 text-sm">
               <div>{noteDate}</div>
-              <button
-                class="bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700"
-                on:click={openEditNoteModal}
-              >
-                Editar
-              </button>
+              <div class="flex gap-2">
+                <button
+                  class="bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700"
+                  on:click={openEditNoteModal}
+                >
+                  Editar
+                </button>
+                <button
+                  class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                  on:click={() => deleteNote(selectedNoteId)}
+                >
+                  Eliminar
+                </button>
+              </div>
             </div>
             <div class="text-gray-800 text-sm markdown-result mb-4">
               {@html renderMarkdown(`# ${noteTitle}\n\n${noteContent}`)}
