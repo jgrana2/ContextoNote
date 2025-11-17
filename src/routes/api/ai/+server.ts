@@ -22,7 +22,7 @@ export async function POST({ request }: RequestEvent) {
         }
 
         const stream = await openai.chat.completions.create({
-            model: "gpt-4.1-mini-2025-04-14",
+            model: "gpt-5-nano-2025-08-07",
             messages: finalMessages,
             max_tokens: 1000,
             stream: true,
