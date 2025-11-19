@@ -24,9 +24,7 @@ export async function POST({ request }: RequestEvent) {
         const stream = await openai.chat.completions.create({
             model: "gpt-5-nano-2025-08-07",
             messages: finalMessages,
-            max_tokens: 1000,
             stream: true,
-            temperature: 0.7
         });
 
         const encoder = new TextEncoder();

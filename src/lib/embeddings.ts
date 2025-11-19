@@ -1,4 +1,6 @@
 // Browser-compatible imports
+import { storage, STORES } from './storage';
+
 let pipeline: any = null;
 let env: any = null;
 
@@ -47,9 +49,19 @@ class EmbeddingService {
             
             console.log('✅ Embedding model loaded successfully - local semantic search active!');
             
-            // Load cache from localStorage
-            this.loadCache();
-            this.loadNoteEmbeddings();
+            // Initialize storage
+            await storage.init();
+
+            // Load cache from IndexedDB
+            await this.loadCache();
+            await this.loadNoteEmbeddings();
+
+            // Clean up legacy localStorage to free up space
+            if (typeof localStorage !== 'undefined') {
+                localStorage.removeItem('embeddings_cache');
+                localStorage.removeItem('note_embeddings');
+            }
+
         } catch (error) {
             console.error('❌ Failed to load embedding model:', error);
             this.embedder = null;
@@ -73,11 +85,12 @@ class EmbeddingService {
         try {
             // Generate embedding
             const result = await this.embedder(text, { pooling: 'mean', normalize: true });
-            const embedding = Array.from(result.data);
+            const embedding = Array.from(result.data) as number[];
             
             // Cache the result
             this.cache.set(cacheKey, embedding);
-            this.saveCache();
+            // Async save to IndexedDB
+            this.saveToCache(cacheKey, embedding);
             
             return embedding;
         } catch (error) {
@@ -162,31 +175,21 @@ class EmbeddingService {
         return hash.toString();
     }
 
-    private loadCache() {
+    private async loadCache() {
         try {
-            const cached = localStorage.getItem('embeddings_cache');
-            if (cached) {
-                const parsedCache = JSON.parse(cached);
-                this.cache = new Map(Object.entries(parsedCache));
-                console.log(`Loaded ${this.cache.size} cached embeddings`);
-            }
+            const entries = await storage.getAllEntries<number[]>(STORES.EMBEDDINGS_CACHE);
+            this.cache = new Map(entries);
+            console.log(`Loaded ${this.cache.size} cached embeddings`);
         } catch (error) {
             console.warn('Failed to load embedding cache:', error);
         }
     }
 
-    private saveCache() {
+    private async saveToCache(key: string, embedding: number[]) {
         try {
-            // Only keep the most recent 1000 embeddings to avoid localStorage bloat
-            if (this.cache.size > 1000) {
-                const entries = Array.from(this.cache.entries());
-                this.cache = new Map(entries.slice(-1000));
-            }
-            
-            const cacheObj = Object.fromEntries(this.cache);
-            localStorage.setItem('embeddings_cache', JSON.stringify(cacheObj));
+            await storage.set(STORES.EMBEDDINGS_CACHE, key, embedding);
         } catch (error) {
-            console.warn('Failed to save embedding cache:', error);
+            console.warn('Failed to save embedding to cache:', error);
         }
     }
 
@@ -199,7 +202,7 @@ class EmbeddingService {
             const noteText = `${note.title}\n${note.content}`;
             const embedding = await this.getEmbedding(noteText);
             this.noteEmbeddings.set(note.id, embedding);
-            this.saveNoteEmbeddings();
+            await this.saveNoteEmbedding(note.id, embedding);
             console.log(`✅ Processed embedding for note: ${note.title}`);
         } catch (error) {
             console.warn(`Failed to process embedding for note ${note.id}:`, error);
@@ -272,38 +275,42 @@ class EmbeddingService {
     }
 
     // Remove embedding for deleted note
-    removeNoteEmbedding(noteId: number): void {
+    async removeNoteEmbedding(noteId: number): Promise<void> {
         this.noteEmbeddings.delete(noteId);
-        this.saveNoteEmbeddings();
+        try {
+            await storage.delete(STORES.NOTE_EMBEDDINGS, noteId.toString());
+        } catch (error) {
+            console.warn('Failed to remove note embedding:', error);
+        }
     }
 
-    private loadNoteEmbeddings() {
+    private async loadNoteEmbeddings() {
         try {
-            const saved = localStorage.getItem('note_embeddings');
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                this.noteEmbeddings = new Map(Object.entries(parsed).map(([id, emb]) => [parseInt(id), emb as number[]]));
-                console.log(`Loaded ${this.noteEmbeddings.size} note embeddings from cache`);
-            }
+            const entries = await storage.getAllEntries<number[]>(STORES.NOTE_EMBEDDINGS);
+            this.noteEmbeddings = new Map(entries.map(([id, emb]) => [parseInt(id), emb]));
+            console.log(`Loaded ${this.noteEmbeddings.size} note embeddings from cache`);
         } catch (error) {
             console.warn('Failed to load note embeddings:', error);
         }
     }
 
-    private saveNoteEmbeddings() {
+    private async saveNoteEmbedding(noteId: number, embedding: number[]) {
         try {
-            const obj = Object.fromEntries(this.noteEmbeddings);
-            localStorage.setItem('note_embeddings', JSON.stringify(obj));
+            await storage.set(STORES.NOTE_EMBEDDINGS, noteId.toString(), embedding);
         } catch (error) {
-            console.warn('Failed to save note embeddings:', error);
+            console.warn('Failed to save note embedding:', error);
         }
     }
 
-    clearCache() {
+    async clearCache() {
         this.cache.clear();
         this.noteEmbeddings.clear();
-        localStorage.removeItem('embeddings_cache');
-        localStorage.removeItem('note_embeddings');
+        await storage.clear(STORES.EMBEDDINGS_CACHE);
+        await storage.clear(STORES.NOTE_EMBEDDINGS);
+        if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem('embeddings_cache');
+            localStorage.removeItem('note_embeddings');
+        }
     }
 
     getCacheStats() {
