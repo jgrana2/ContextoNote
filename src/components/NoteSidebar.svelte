@@ -18,6 +18,7 @@
         date: string;
         dateRaw: string;
         folderId: number | null;
+        favorite: boolean;
     }
 
     export let notes: Note[] = [];
@@ -89,6 +90,15 @@
             } else {
                 groups.older.push(note);
             }
+        });
+
+        // Sort each group: favorites first, then by most recent
+        Object.keys(groups).forEach(key => {
+            groups[key as keyof typeof groups].sort((a, b) => {
+                if (a.favorite && !b.favorite) return -1;
+                if (!a.favorite && b.favorite) return 1;
+                return b.id - a.id;
+            });
         });
 
         return groups;
@@ -246,6 +256,36 @@
         }
     }
 
+    async function toggleFavorite(noteId: number) {
+        const note = notes.find(n => n.id === noteId);
+        if (!note) return;
+
+        try {
+            const res = await fetch('/api/notes', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: noteId,
+                    favorite: !note.favorite
+                })
+            });
+
+            if (res.ok) {
+                const updatedNote = await res.json();
+                notes = notes.map(n => n.id === noteId ? updatedNote : n);
+            }
+        } catch (error) {
+            console.error('Error toggling favorite:', error);
+        }
+    }
+
+    // Get all favorite notes
+    function getFavoriteNotes(): Note[] {
+        return notes
+            .filter(n => n.favorite)
+            .sort((a, b) => b.id - a.id); // Most recent first
+    }
+
     function getGroupTitle(groupName: string): string {
         const titles: Record<string, string> = {
             today: 'Hoy',
@@ -357,6 +397,40 @@
         {:else if viewMode === 'recent'}
             <!-- Recent Notes View - Grouped by Time -->
             <div class="recent-view">
+                <!-- Favorites Section -->
+                {#if getFavoriteNotes().length > 0}
+                    <div class="favorites-section">
+                        <div class="favorites-header">
+                            <div class="favorites-icon">⭐</div>
+                            <div class="favorites-title">Favoritos</div>
+                            <div class="note-count">{getFavoriteNotes().length}</div>
+                        </div>
+                        <div class="favorites-notes">
+                            {#each getFavoriteNotes() as note}
+                                <div
+                                    class="note-item"
+                                    class:selected={selectedNoteId === note.id}
+                                    on:click={() => onNoteClick(note)}
+                                    role="button"
+                                    tabindex="0"
+                                >
+                                    <div class="note-content">
+                                        <div class="note-title">{note.title}</div>
+                                        <div class="note-date">{note.dateRaw || note.date}</div>
+                                    </div>
+                                    <button
+                                        class="favorite-btn favorited"
+                                        on:click|stopPropagation={() => toggleFavorite(note.id)}
+                                        title="Quitar de favoritos"
+                                    >
+                                        ★
+                                    </button>
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+                {/if}
+
                 {#each Object.entries(timeGroups) as [groupName, groupNotes]}
                     {#if groupNotes.length > 0}
                         <div class="time-group" transition:fade={{ duration: 200 }}>
@@ -394,8 +468,17 @@
                                             role="button"
                                             tabindex="0"
                                         >
-                                            <div class="note-title">{note.title}</div>
-                                            <div class="note-date">{note.dateRaw || note.date}</div>
+                                            <div class="note-content">
+                                                <div class="note-title">{note.title}</div>
+                                                <div class="note-date">{note.dateRaw || note.date}</div>
+                                            </div>
+                                            <button
+                                                class="favorite-btn {note.favorite ? 'favorited' : ''}"
+                                                on:click|stopPropagation={() => toggleFavorite(note.id)}
+                                                title={note.favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+                                            >
+                                                {note.favorite ? '★' : '☆'}
+                                            </button>
                                         </div>
                                     {/each}
                                 </div>
@@ -606,6 +689,8 @@
         cursor: pointer;
         transition: background-color 0.15s;
         margin-bottom: 0.25rem;
+        display: flex;
+        align-items: center;
     }
 
     .note-item:hover {
@@ -634,5 +719,65 @@
         text-align: center;
         color: #9ca3af;
         font-size: 0.875rem;
+    }
+
+    .favorite-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 0.125rem;
+        margin-left: 0.5rem;
+        font-size: 1rem;
+        color: #d1d5db;
+        transition: color 0.15s;
+    }
+
+    .favorite-btn:hover {
+        color: #fbbf24;
+    }
+
+    .favorite-btn.favorited {
+        color: #fbbf24;
+    }
+
+    .favorite-btn.favorited:hover {
+        color: #f59e0b;
+    }
+
+    .note-content {
+        flex: 1;
+    }
+
+    .favorites-section {
+        margin-bottom: 1rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        background-color: #fef3c7;
+    }
+
+    .favorites-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        border-bottom: 1px solid #e5e7eb;
+        background-color: #fde68a;
+        border-radius: 0.5rem 0.5rem 0 0;
+        font-weight: 600;
+        color: #92400e;
+    }
+
+    .favorites-icon {
+        font-size: 1.25rem;
+    }
+
+    .favorites-title {
+        flex: 1;
+        font-size: 0.875rem;
+        color: #92400e;
+    }
+
+    .favorites-notes {
+        padding: 0.25rem;
     }
 </style>

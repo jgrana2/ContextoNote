@@ -12,9 +12,11 @@
     interface Note {
         id: number;
         title: string;
-        folderId: number | null;
+        content: string;
         date: string;
         dateRaw: string;
+        folderId: number | null;
+        favorite: boolean;
     }
 
     export let folders: Folder[] = [];
@@ -47,6 +49,18 @@
     function getNotesForFolder(folderId: number | null): Note[] {
         return notes
             .filter(n => n.folderId === folderId)
+            .sort((a, b) => {
+                // Favorites first, then by most recent
+                if (a.favorite && !b.favorite) return -1;
+                if (!a.favorite && b.favorite) return 1;
+                return b.id - a.id;
+            });
+    }
+
+    // Get all favorite notes
+    function getFavoriteNotes(): Note[] {
+        return notes
+            .filter(n => n.favorite)
             .sort((a, b) => b.id - a.id); // Most recent first
     }
 
@@ -120,6 +134,29 @@
         }
     }
 
+    async function toggleFavorite(noteId: number) {
+        const note = notes.find(n => n.id === noteId);
+        if (!note) return;
+
+        try {
+            const res = await fetch('/api/notes', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: noteId,
+                    favorite: !note.favorite
+                })
+            });
+
+            if (res.ok) {
+                const updatedNote = await res.json();
+                notes = notes.map(n => n.id === noteId ? updatedNote : n);
+            }
+        } catch (error) {
+            console.error('Error toggling favorite:', error);
+        }
+    }
+
     function renderFolderTree(parentId: number | null = null, depth: number = 0) {
         const childFolders = buildFolderTree(parentId);
         return { childFolders, depth };
@@ -127,6 +164,39 @@
 </script>
 
 <div class="folder-tree">
+    <!-- Favorites Section -->
+    {#if getFavoriteNotes().length > 0}
+        <div class="favorites-section">
+            <div class="favorites-header">
+                <div class="favorites-icon">⭐</div>
+                <div class="favorites-title">Favoritos</div>
+                <div class="note-count">{getFavoriteNotes().length}</div>
+            </div>
+            <div class="favorites-notes">
+                {#each getFavoriteNotes() as note}
+                    <div
+                        class="note-item"
+                        class:selected={selectedNoteId === note.id}
+                        draggable="true"
+                        on:dragstart={(e) => handleNoteOnDragStart(e, note.id)}
+                        on:click={() => onNoteClick(note)}
+                        role="button"
+                        tabindex="0"
+                    >
+                        <button
+                            class="favorite-btn favorited"
+                            on:click|stopPropagation={() => toggleFavorite(note.id)}
+                            title="Quitar de favoritos"
+                        >
+                            ★
+                        </button>
+                        <div class="note-title">{note.title}</div>
+                    </div>
+                {/each}
+            </div>
+        </div>
+    {/if}
+
     <!-- Root folder (All Notes) -->
     <div
         class="folder-item root-folder"
@@ -169,6 +239,13 @@
                     tabindex="0"
                 >
                     <div class="note-title">{note.title}</div>
+                    <button
+                        class="favorite-btn {note.favorite ? 'favorited' : ''}"
+                        on:click|stopPropagation={() => toggleFavorite(note.id)}
+                        title={note.favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+                    >
+                        {note.favorite ? '★' : '☆'}
+                    </button>
                 </div>
             {/each}
         </div>
@@ -270,6 +347,13 @@
                                     role="button"
                                     tabindex="0"
                                 >
+                                    <button
+                                        class="favorite-btn {note.favorite ? 'favorited' : ''}"
+                                        on:click|stopPropagation={() => toggleFavorite(note.id)}
+                                        title={note.favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+                                    >
+                                        {note.favorite ? '★' : '☆'}
+                                    </button>
                                     <div class="note-title">{note.title}</div>
                                 </div>
                             {/each}
@@ -316,6 +400,8 @@
         cursor: pointer;
         transition: background-color 0.15s;
         margin-bottom: 0.125rem;
+        display: flex;
+        align-items: center;
     }
 
     .folder-item:hover,
@@ -408,5 +494,61 @@
     .root-folder {
         font-weight: 600;
         margin-bottom: 0.5rem;
+    }
+
+    .favorite-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 0.125rem;
+        margin-left: 0.5rem;
+        font-size: 1rem;
+        color: #d1d5db;
+        transition: color 0.15s;
+    }
+
+    .favorite-btn:hover {
+        color: #fbbf24;
+    }
+
+    .favorite-btn.favorited {
+        color: #fbbf24;
+    }
+
+    .favorite-btn.favorited:hover {
+        color: #f59e0b;
+    }
+
+    .favorites-section {
+        margin-bottom: 1rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        background-color: #fef3c7;
+    }
+
+    .favorites-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        border-bottom: 1px solid #e5e7eb;
+        background-color: #fde68a;
+        border-radius: 0.5rem 0.5rem 0 0;
+        font-weight: 600;
+        color: #92400e;
+    }
+
+    .favorites-icon {
+        font-size: 1.25rem;
+    }
+
+    .favorites-title {
+        flex: 1;
+        font-size: 0.875rem;
+        color: #92400e;
+    }
+
+    .favorites-notes {
+        padding: 0.25rem;
     }
 </style>

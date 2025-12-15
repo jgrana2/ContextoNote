@@ -39,6 +39,20 @@ try {
   console.error('Error checking/migrating notes table:', error);
 }
 
+// Migration: Add favorite column to notes table if it doesn't exist
+try {
+  const tableInfo = db.prepare("PRAGMA table_info(notes)").all() as any[];
+  const hasFavorite = tableInfo.some((col: any) => col.name === 'favorite');
+
+  if (!hasFavorite) {
+    console.log('Migrating notes table: adding favorite column...');
+    db.exec(`ALTER TABLE notes ADD COLUMN favorite BOOLEAN DEFAULT FALSE`);
+    console.log('Favorite migration complete!');
+  }
+} catch (error) {
+  console.error('Error checking/migrating favorite column:', error);
+}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS conversations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
