@@ -5,11 +5,53 @@
     import { embeddingService } from "$lib/embeddings";
     import NoteSidebar from "../components/NoteSidebar.svelte";
 
+    interface Note {
+        id: number;
+        title: string;
+        content: string;
+        date: string;
+        dateRaw: string;
+        folderId: number | null;
+        favorite: boolean;
+        relevanceScore?: number;
+        explanation?: string;
+    }
+
+    interface Folder {
+        id: number;
+        name: string;
+        parentFolderId: number | null;
+        createdAt: string;
+        updatedAt: string;
+    }
+
+    interface Prompt {
+        id: number;
+        name: string;
+        text: string;
+    }
+
+    interface ChatMessage {
+        id?: number;
+        role: 'user' | 'assistant';
+        content: string;
+        createdAt?: string;
+    }
+
+    interface Chat {
+        id: number;
+        title: string;
+        messages: ChatMessage[];
+        createdAt: string;
+        updatedAt: string;
+        contextNotes: number[];
+    }
+
     // Estado de notas y carpetas
-    let notes = [];
-    let folders = [];
-    let selectedNoteId = null;
-    let selectedFolderId = null;
+    let notes: Note[] = [];
+    let folders: Folder[] = [];
+    let selectedNoteId: number | null = null;
+    let selectedFolderId: number | null = null;
     let noteDate = "";
     let noteContent = "";
     let noteTitle = "";
@@ -25,13 +67,13 @@
     let editNoteContent = "";
 
     // Cargar prompts desde localStorage o inicializar vacío
-    let prompts = [];
-    let editingPromptId = null;
+    let prompts: Prompt[] = [];
+    let editingPromptId: number | null = null;
 
     let showPromptModal = false;
     let newPromptName = "";
     let newPromptText = "";
-    let selectedPrompt = null;
+    let selectedPrompt: number | null = null;
     let promptText = "";
     // Hovered note for action buttons in note list
     let hoveredNoteId: number | null = null;
@@ -40,14 +82,14 @@
     let llmResult = "";
 
     // Contexto de notas para LLM
-    let selectedContextNotes = [];
-    let manuallySelectedNotes = []; // Track manually selected notes
+    let selectedContextNotes: number[] = [];
+    let manuallySelectedNotes: number[] = []; // Track manually selected notes
     let showContextDropdown = false;
     let contextSearchQuery = "";
     let isAutoSelecting = false;
     let embeddingModelStatus = "not_loaded";
     let similarityThreshold = 0.25; // Configurable threshold (0.0 to 1.0)
-    let searchDebounceTimer = null;
+    let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     let isSearching = false;
     let justSentMessage = false;
     
@@ -68,9 +110,9 @@
 
     // Chat interface - Multiple conversations
     let userMessage = "";
-    let chatHistory = [];
-    let chats = []; // Array of all chat conversations
-    let currentChatId = null;
+    let chatHistory: ChatMessage[] = [];
+    let chats: Chat[] = []; // Array of all chat conversations
+    let currentChatId: number | null = null;
     let showChatHistory = false;
     
     // Chat structure: { id, title, messages, createdAt, updatedAt, contextNotes }
@@ -79,8 +121,8 @@
     let promptChain: { id: number; name: string; text: string }[] = [];
 
     // Aplica altura fija a un elemento de nota según su ID
-    function establecerAlturaNota(nota, altura) {
-      const el = document.querySelector(`[data-note-id="${nota.id}"]`);
+    function establecerAlturaNota(nota: Note, altura: string) {
+      const el = document.querySelector<HTMLElement>(`[data-note-id="${nota.id}"]`);
       if (el) {
         el.style.height = altura;
         el.style.position = 'relative';
@@ -116,7 +158,7 @@
     }
 
     // Load prompts from localStorage
-    const savedPrompts = JSON.parse(localStorage.getItem("prompts")) || [];
+    const savedPrompts = JSON.parse(localStorage.getItem("prompts") ?? "[]") as Prompt[];
     prompts = savedPrompts;
     
     // Load conversations from SQLite API
@@ -205,7 +247,7 @@
         }
     }
 
-    async function switchToChat(chatId) {
+    async function switchToChat(chatId: number) {
         if (currentChatId === chatId) return; // Avoid unnecessary switching
 
         // Save current chat state first
@@ -257,7 +299,7 @@
         }
     }
 
-    async function deleteChat(chatId) {
+    async function deleteChat(chatId: number) {
         if (chats.length <= 1) {
             alert("No puedes eliminar la última conversación");
             return;
@@ -290,7 +332,7 @@
     }
 
     // Funciones para notas
-    function openNote(note) {
+    function openNote(note: Note) {
         if (hasUnsavedChanges()) {
             const confirmDiscard = confirm(
                 "Hay cambios sin guardar. ¿Deseas guardar antes de cambiar de nota?",
@@ -305,6 +347,17 @@
         noteContent = note.content;
     }
 
+    async function saveNote(): Promise<void> {
+      if (selectedNoteId === null) return;
+      const response = await fetch('/api/notes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selectedNoteId, title: noteTitle, content: noteContent })
+      });
+      if (!response.ok) throw new Error('Failed to save note');
+      const updatedNote = await response.json() as Note;
+      notes = notes.map(note => note.id === updatedNote.id ? updatedNote : note);
+    }
     async function createNewNote() {
         if (hasUnsavedChanges()) {
             const confirmDiscard = confirm(
@@ -432,7 +485,7 @@
     }
 
     // Funciones para prompts
-    function openPromptModal(promptToEdit = null) {
+    function openPromptModal(promptToEdit: Prompt | null = null) {
         if (promptToEdit) {
             // Editar prompt existente
             editingPromptId = promptToEdit.id;
@@ -552,8 +605,9 @@
             } else {
                 showToastNotification("Error al enviar mensaje");
             }
-        } catch (error) {
-            chatHistory[chatHistory.length - 1].content = `Error al obtener respuesta del LLM: ${error.message}`;
+    } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            chatHistory[chatHistory.length - 1].content = `Error al obtener respuesta del LLM: ${errorMessage}`;
             
             // Try to save error message to database
             try {
@@ -589,7 +643,7 @@
                 const res = await fetch('/api/notes');
                 const allNotes = res.ok ? await res.json() : [];
                 notes = allNotes.filter(
-                    (n) =>
+                    (n: Note) =>
                         n.title.includes(searchQuery) ||
                         n.content.includes(searchQuery),
                 );
@@ -645,9 +699,8 @@
     }
 
     function renderMarkdown(md: string): string {
-        // Renderizar Markdown sin convertir saltos de línea simples en <br>
         marked.setOptions({ breaks: false, gfm: true });
-        return marked(md);
+        return marked.parseInline(md) as string;
     }
 
     function copyToClipboard() {
@@ -664,7 +717,7 @@
     }
 
     // Toast notification system
-    function showToastNotification(message) {
+    function showToastNotification(message: string) {
         toastMessage = message;
         showToast = true;
         
@@ -675,7 +728,7 @@
     }
 
     // Copy message content to clipboard
-    async function copyMessageContent(content) {
+    async function copyMessageContent(content: string) {
         try {
             // Remove HTML tags for copying plain text
             const plainText = content.replace(/<[^>]*>/g, '');
@@ -688,7 +741,7 @@
     }
 
     // Funciones para contexto de notas
-    function toggleContextNote(noteId) {
+    function toggleContextNote(noteId: number) {
         if (selectedContextNotes.includes(noteId)) {
             selectedContextNotes = selectedContextNotes.filter(id => id !== noteId);
             manuallySelectedNotes = manuallySelectedNotes.filter(id => id !== noteId);
@@ -698,7 +751,7 @@
         }
     }
 
-    function removeContextNote(noteId) {
+    function removeContextNote(noteId: number) {
         selectedContextNotes = selectedContextNotes.filter(id => id !== noteId);
         manuallySelectedNotes = manuallySelectedNotes.filter(id => id !== noteId);
     }
@@ -715,14 +768,15 @@
         }
     }
 
-    function handleClickOutside(event) {
-        if (showContextDropdown && !event.target.closest('.context-dropdown')) {
+    function handleClickOutside(event: MouseEvent) {
+        const target = event.target as Element | null;
+        if (showContextDropdown && !target?.closest('.context-dropdown')) {
             showContextDropdown = false;
         }
     }
 
     // Debounced real-time search function
-    function debounceSearch(query, delay = 500) {
+    function debounceSearch(query: string, delay = 500) {
         if (searchDebounceTimer) {
             clearTimeout(searchDebounceTimer);
         }
@@ -733,7 +787,7 @@
     }
 
     // Perform real-time context search
-    async function performRealtimeSearch(query) {
+    async function performRealtimeSearch(query: string) {
         if (!query.trim() || query.length < 3) {
             // Only keep manually selected notes
             selectedContextNotes = [...manuallySelectedNotes];
@@ -822,10 +876,10 @@
             });
             
             if (response.ok) {
-                const { relevantNotes } = await response.json();
-                selectedContextNotes = relevantNotes.map(note => note.id);
+                const { relevantNotes } = await response.json() as { relevantNotes: Note[] };
+                selectedContextNotes = relevantNotes.map((note: Note) => note.id);
                 
-                console.log('Auto-selected notes (API):', relevantNotes.map(n => ({ 
+                console.log('Auto-selected notes (API):', relevantNotes.map((n: Note) => ({ 
                     title: n.title, 
                     score: n.relevanceScore?.toFixed(2),
                     explanation: n.explanation 
@@ -846,7 +900,7 @@
         }
     }
 
-    async function deleteNote(noteId) {
+    async function deleteNote(noteId: number) {
         const confirmDelete = confirm("¿Seguro que deseas eliminar esta nota?");
         if (confirmDelete) {
             try {
@@ -875,7 +929,7 @@
         }
     }
 
-    function findRelevantNotesByKeywords(query) {
+    function findRelevantNotesByKeywords(query: string): Array<Note & { relevanceScore: number }> {
         const queryWords = query.toLowerCase().split(/\s+/).filter(word => word.length > 2);
         
         return notes.map(note => {
@@ -1074,7 +1128,7 @@
                 </button>
                 <button
                   class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
-                  on:click={() => deleteNote(selectedNoteId)}
+                  on:click={() => selectedNoteId !== null && deleteNote(selectedNoteId)}
                 >
                   Eliminar
                 </button>

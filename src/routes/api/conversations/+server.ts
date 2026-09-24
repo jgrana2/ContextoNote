@@ -1,6 +1,21 @@
 import db from '$lib/db';
 import type { RequestEvent } from '@sveltejs/kit';
 
+interface ConversationRow {
+  id: number;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  contextNotes: string | null;
+}
+
+interface MessageRow {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}
+
 export async function GET() {
   try {
     // Get all conversations
@@ -8,16 +23,16 @@ export async function GET() {
       SELECT id, title, createdAt, updatedAt, contextNotes
       FROM conversations
       ORDER BY updatedAt DESC
-    `).all();
+    `).all() as ConversationRow[];
 
     // Get messages for each conversation
-    const conversationsWithMessages = conversations.map(conv => {
+    const conversationsWithMessages = conversations.map((conv: ConversationRow) => {
       const messages = db.prepare(`
         SELECT id, role, content, createdAt
         FROM messages
         WHERE conversationId = ?
         ORDER BY createdAt ASC
-      `).all(conv.id);
+      `).all(conv.id) as MessageRow[];
 
       return {
         id: conv.id,

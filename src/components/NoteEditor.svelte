@@ -19,7 +19,7 @@
   let dragActive = false;
 
   // Rendered Markdown HTML (updates as noteText changes)
-  $: rendered = marked.parse(noteText);
+  $: rendered = marked.parse(noteText) as string;
 
   // Add files (drag-drop or file input)
   function addFiles(files: FileList | File[]) {
@@ -135,7 +135,7 @@
         autofocus
       ></textarea>
     {:else}
-      <div class="prose prose-sm max-w-none" tabindex="0" this={el => { if (el) el.scrollTop = 0; }}>
+      <div class="prose prose-sm max-w-none" tabindex="0">
         {@html rendered}
       </div>
     {/if}

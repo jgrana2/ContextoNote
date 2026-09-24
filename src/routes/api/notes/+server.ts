@@ -1,10 +1,20 @@
 import db from '$lib/db';
 import type { RequestEvent } from '@sveltejs/kit';
 
+interface NoteRow {
+  id: number;
+  title: string;
+  content: string;
+  date: string;
+  dateRaw: string | null;
+  folderId: number | null;
+  favorite: number;
+}
+
 export async function GET() {
-  const notes = db.prepare('SELECT * FROM notes ORDER BY id DESC').all();
+  const notes = db.prepare('SELECT * FROM notes ORDER BY id DESC').all() as NoteRow[];
   // Convert favorite integer to boolean for frontend
-  const processedNotes = notes.map(note => ({
+  const processedNotes = notes.map((note: NoteRow) => ({
     ...note,
     favorite: !!note.favorite
   }));
@@ -63,7 +73,10 @@ export async function PUT({ request }: RequestEvent) {
     return new Response(JSON.stringify({ error: 'Note not found' }), { status: 404 });
   }
 
-  const updatedNote = db.prepare('SELECT * FROM notes WHERE id = ?').get(id);
+  const updatedNote = db.prepare('SELECT * FROM notes WHERE id = ?').get(id) as NoteRow | undefined;
+  if (!updatedNote) {
+    return new Response(JSON.stringify({ error: 'Note not found' }), { status: 404 });
+  }
   const processedNote = {
     ...updatedNote,
     favorite: !!updatedNote.favorite

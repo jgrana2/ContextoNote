@@ -53,18 +53,19 @@ export async function POST({ request }: RequestEvent) {
                 "Connection": "keep-alive"
             }
         });
-    } catch (requestError) {
+    } catch (requestError: unknown) {
         console.error('Request error:', requestError);
+        const typedError = requestError as { status?: number; message?: string };
         
         // Check if it's a validation error that should return 400
-        if (requestError?.status === 400) {
+        if (typedError.status === 400) {
             throw requestError;
         }
         
         // Return JSON error response instead of throwing SvelteKit error
         return new Response(JSON.stringify({
             error: 'Failed to process AI request',
-            details: requestError?.message || 'Unknown error'
+            details: typedError.message || 'Unknown error'
         }), {
             status: 500,
             headers: {

@@ -563,7 +563,7 @@
         align-items: center;
         width: 100%;
         padding: 0.5rem;
-        background-color: #3b82f6;
+        background-color: transparent;
         border: none;
         border-radius: 0.375rem;
         cursor: pointer;
@@ -571,7 +571,7 @@
     }
 
     .organize-btn:hover:not(:disabled) {
-        background-color: #2563eb;
+        background-color: #e5e7eb;
     }
 
     .organize-btn:disabled {
@@ -582,11 +582,11 @@
     .organize-btn .icon {
         height: 1.5rem;
         width: 1.5rem;
-        color: white;
+        color: #1f2937;
     }
 
     .organize-btn .btn-text {
-        color: white;
+        color: #1f2937;
     }
 
     .btn-text {
