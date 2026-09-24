@@ -180,6 +180,7 @@
                         draggable="true"
                         on:dragstart={(e) => handleNoteOnDragStart(e, note.id)}
                         on:click={() => onNoteClick(note)}
+                        on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && onNoteClick(note)}
                         role="button"
                         tabindex="0"
                     >
@@ -203,6 +204,7 @@
         class:selected={selectedFolderId === null}
         class:drop-target={dropTargetFolderId === null && draggedNoteId !== null}
         on:click={() => selectFolder(null)}
+        on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && selectFolder(null)}
         on:dragover={(e) => handleFolderDragOver(e, null)}
         on:dragleave={handleFolderDragLeave}
         on:drop={(e) => handleFolderDrop(e, null)}
@@ -215,6 +217,7 @@
             <div class="note-count">{getNotesForFolder(null).length}</div>
             <button
                 class="folder-action-btn"
+                aria-label="Crear carpeta"
                 on:click|stopPropagation={() => onFolderCreate(null)}
                 title="Crear carpeta"
             >
@@ -235,6 +238,7 @@
                     draggable="true"
                     on:dragstart={(e) => handleNoteOnDragStart(e, note.id)}
                     on:click={() => onNoteClick(note)}
+                    on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && onNoteClick(note)}
                     role="button"
                     tabindex="0"
                 >
@@ -272,6 +276,7 @@
                 <div class="folder-header">
                     <button
                         class="expand-btn"
+                        aria-label="Expandir o contraer carpeta"
                         on:click|stopPropagation={() => toggleFolder(folder.id)}
                     >
                         <svg class="w-3 h-3 transition-transform {isExpanded ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -289,17 +294,17 @@
                                 if (e.key === 'Escape') cancelEditFolder();
                             }}
                             class="folder-name-input"
-                            autofocus
                         />
                     {:else}
-                        <div class="folder-icon" on:click={() => selectFolder(folder.id)}>📁</div>
-                        <div class="folder-name" on:click={() => selectFolder(folder.id)}>{folder.name}</div>
+                        <div class="folder-icon" role="button" tabindex="0" aria-label="Seleccionar carpeta" on:click={() => selectFolder(folder.id)} on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && selectFolder(folder.id)}>📁</div>
+                        <div class="folder-name" role="button" tabindex="0" aria-label="Seleccionar carpeta" on:click={() => selectFolder(folder.id)} on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && selectFolder(folder.id)}>{folder.name}</div>
                         <div class="note-count">{noteCount}</div>
 
                         {#if hoveredFolderId === folder.id}
                             <div class="folder-actions" transition:fade={{ duration: 150 }}>
                                 <button
                                     class="folder-action-btn"
+                                    aria-label="Crear subcarpeta"
                                     on:click|stopPropagation={() => onFolderCreate(folder.id)}
                                     title="Crear subcarpeta"
                                 >
@@ -309,6 +314,7 @@
                                 </button>
                                 <button
                                     class="folder-action-btn"
+                                    aria-label="Renombrar carpeta"
                                     on:click|stopPropagation={() => startEditFolder(folder)}
                                     title="Renombrar"
                                 >
@@ -318,6 +324,7 @@
                                 </button>
                                 <button
                                     class="folder-action-btn"
+                                    aria-label="Eliminar carpeta"
                                     on:click|stopPropagation={() => onFolderDelete(folder.id)}
                                     title="Eliminar"
                                 >
@@ -344,6 +351,7 @@
                                     draggable="true"
                                     on:dragstart={(e) => handleNoteOnDragStart(e, note.id)}
                                     on:click={() => onNoteClick(note)}
+                                    on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && onNoteClick(note)}
                                     role="button"
                                     tabindex="0"
                                 >

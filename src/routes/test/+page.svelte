@@ -137,7 +137,8 @@
     on:dragover|preventDefault={handleDragOver}
     on:dragleave|preventDefault={handleDragLeave}
     on:drop={handleDrop}
-    tabindex="0"
+    role="region"
+    aria-label="Área de edición y vista previa"
   >
     {#if editing}
       <div class="relative">
@@ -156,11 +157,10 @@
           rows="10"
           class="w-full p-4 bg-slate-50 border border-gray-200 rounded-xl resize-y focus:outline-none focus:ring-2 focus:ring-sky-300 focus:bg-white transition placeholder-gray-300 italic shadow-none text-base"
           spellcheck="true"
-          autofocus
         ></textarea>
       </div>
     {:else}
-      <div class="prose prose-sm max-w-none text-slate-600" tabindex="0" style="max-height: 35vh; overflow-y: auto;">
+      <div class="prose prose-sm max-w-none text-slate-600" style="max-height: 35vh; overflow-y: auto;">
         {@html rendered}
       </div>
     {/if}

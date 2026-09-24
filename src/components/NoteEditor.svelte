@@ -86,9 +86,11 @@
     on:dragover|preventDefault={handleDragOver}
     on:dragleave|preventDefault={handleDragLeave}
     on:drop={handleDrop}
-    title="Arrastra y suelta archivos aquí o haz clic para adjuntar"
-    on:click={() => document.getElementById('fileInput')?.click()}
+    role="button"
+    aria-label="Adjuntar archivos"
     tabindex="0"
+    on:click={() => document.getElementById('fileInput')?.click()}
+    on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && document.getElementById('fileInput')?.click()}
   >
     <div class="flex items-center justify-center space-x-3 text-gray-500 select-none">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V8m0 0V8a4 4 0 014-4h2a4 4 0 014 4v8m0 0a4 4 0 01-4 4H11a4 4 0 01-4-4z" /></svg>
@@ -132,10 +134,9 @@
         rows="12"
         class="w-full p-3 border rounded resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
         spellcheck="true"
-        autofocus
       ></textarea>
     {:else}
-      <div class="prose prose-sm max-w-none" tabindex="0">
+      <div class="prose prose-sm max-w-none">
         {@html rendered}
       </div>
     {/if}

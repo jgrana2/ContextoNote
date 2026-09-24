@@ -411,6 +411,7 @@
                                     class="note-item"
                                     class:selected={selectedNoteId === note.id}
                                     on:click={() => onNoteClick(note)}
+                                    on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && onNoteClick(note)}
                                     role="button"
                                     tabindex="0"
                                 >
@@ -420,6 +421,7 @@
                                     </div>
                                     <button
                                         class="favorite-btn favorited"
+                                        aria-label="Quitar de favoritos"
                                         on:click|stopPropagation={() => toggleFavorite(note.id)}
                                         title="Quitar de favoritos"
                                     >
@@ -437,6 +439,7 @@
                             <div
                                 class="group-header"
                                 on:click={() => toggleGroup(groupName)}
+                                on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleGroup(groupName)}
                                 role="button"
                                 tabindex="0"
                             >
@@ -465,6 +468,7 @@
                                             class="note-item"
                                             class:selected={selectedNoteId === note.id}
                                             on:click={() => onNoteClick(note)}
+                                            on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && onNoteClick(note)}
                                             role="button"
                                             tabindex="0"
                                         >
@@ -474,6 +478,7 @@
                                             </div>
                                             <button
                                                 class="favorite-btn {note.favorite ? 'favorited' : ''}"
+                                                aria-label={note.favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
                                                 on:click|stopPropagation={() => toggleFavorite(note.id)}
                                                 title={note.favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
                                             >
@@ -524,8 +529,7 @@
     .search-input:focus {
         outline: none;
         border-color: #3b82f6;
-        ring: 2px;
-        ring-color: #93c5fd;
+        box-shadow: 0 0 0 2px #93c5fd;
     }
 
     .new-note-container {

@@ -1082,7 +1082,9 @@
     </div>
 {/if}
 
-<div class="h-screen flex flex-col bg-gray-50" on:click={handleClickOutside}>
+<svelte:window on:click={handleClickOutside} />
+
+<div class="h-screen flex flex-col bg-gray-50" role="application" aria-label="Aplicación ContextoNote" tabindex="-1">
     <!-- Header simplificado -->
     <header
         class="flex items-center justify-between px-4 py-2 bg-gray-100 rounded-b-lg shadow"
@@ -1163,6 +1165,7 @@
                     <div class="flex items-center gap-1">
                         <!-- New Chat Button -->
                         <button
+                            aria-label="Nueva conversación"
                             on:click={createNewChat}
                             class="p-1 hover:bg-gray-100 rounded transition-colors"
                             title="Nueva conversación"
@@ -1174,6 +1177,7 @@
                         
                         <!-- Chat History Toggle -->
                         <button
+                            aria-label="Mostrar historial de conversaciones"
                             on:click={() => showChatHistory = !showChatHistory}
                             class="p-1 hover:bg-gray-100 rounded transition-colors {showChatHistory ? 'bg-blue-100 text-blue-600' : 'text-gray-600'}"
                             title="Historial de conversaciones"
@@ -1206,6 +1210,7 @@
                                         </div>
                                     </button>
                                     <button
+                                        aria-label="Eliminar conversación"
                                         on:click={() => deleteChat(chat.id)}
                                         class="p-1 hover:bg-red-100 rounded text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
                                         title="Eliminar conversación"
